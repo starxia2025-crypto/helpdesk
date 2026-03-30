@@ -11,11 +11,20 @@ import { motion } from "framer-motion";
 import { useEffect } from "react";
 
 const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: z.string().email("Introduce un correo electrónico válido"),
+  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
+
+const MicrosoftIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" className="h-4 w-4">
+    <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+    <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+    <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+    <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+  </svg>
+);
 
 export default function Login() {
   const [location, setLocation] = useLocation();
@@ -42,11 +51,15 @@ export default function Login() {
     loginMutation.mutate({ data });
   }
 
+  function handleMicrosoftLogin() {
+    window.location.href = `${import.meta.env.BASE_URL}api/auth/microsoft`.replace('//', '/');
+  }
+
   if (isUserLoading || user) return null;
 
   return (
     <div className="min-h-screen w-full flex bg-slate-50 dark:bg-slate-950">
-      {/* Visual Side */}
+      {/* Lado visual */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 bg-primary p-12 text-primary-foreground relative overflow-hidden">
         <div className="absolute inset-0 z-0 opacity-10">
           <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -73,7 +86,7 @@ export default function Login() {
             transition={{ duration: 0.5 }}
             className="text-5xl font-bold leading-tight mb-6"
           >
-            Support, elevated.
+            Soporte técnico, elevado.
           </motion.h1>
           <motion.p 
             initial={{ opacity: 0, y: 20 }}
@@ -81,16 +94,16 @@ export default function Login() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="text-primary-foreground/80 text-lg max-w-md"
           >
-            The command center for educational technology teams. Resolve issues faster, communicate clearer, and empower your clients.
+            El centro de mando para equipos de tecnología educativa. Resuelve incidencias más rápido, comunica mejor y empodera a tus clientes.
           </motion.p>
         </div>
 
         <div className="relative z-10 text-sm text-primary-foreground/60">
-          © {new Date().getFullYear()} HelpDesk Pro. All rights reserved.
+          © {new Date().getFullYear()} HelpDesk Pro. Todos los derechos reservados.
         </div>
       </div>
 
-      {/* Form Side */}
+      {/* Lado formulario */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md space-y-8">
           <div className="text-center lg:text-left">
@@ -100,15 +113,35 @@ export default function Login() {
               </div>
               <span className="font-bold text-xl text-slate-900 dark:text-white">HelpDesk Pro</span>
             </div>
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Welcome back</h2>
-            <p className="text-slate-500 mt-2">Sign in to your account to continue</p>
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Bienvenido</h2>
+            <p className="text-slate-500 mt-2">Inicia sesión para continuar</p>
+          </div>
+
+          {/* Botón Microsoft */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-11 gap-3 font-medium border-slate-200 hover:bg-slate-50"
+            onClick={handleMicrosoftLogin}
+          >
+            <MicrosoftIcon />
+            Continuar con Microsoft
+          </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-slate-50 dark:bg-slate-950 px-3 text-slate-400">o con correo electrónico</span>
+            </div>
           </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {loginMutation.isError && (
                 <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium">
-                  {loginMutation.error?.message || "Invalid email or password. Please try again."}
+                  {loginMutation.error?.message || "Correo o contraseña incorrectos. Inténtalo de nuevo."}
                 </div>
               )}
               
@@ -118,9 +151,9 @@ export default function Login() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>Correo electrónico</FormLabel>
                       <FormControl>
-                        <Input placeholder="name@school.edu" {...field} className="h-11" />
+                        <Input placeholder="nombre@escuela.edu" {...field} className="h-11" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -133,8 +166,8 @@ export default function Login() {
                   render={({ field }) => (
                     <FormItem>
                       <div className="flex items-center justify-between">
-                        <FormLabel>Password</FormLabel>
-                        <a href="#" className="text-sm font-medium text-primary hover:underline">Forgot password?</a>
+                        <FormLabel>Contraseña</FormLabel>
+                        <a href="#" className="text-sm font-medium text-primary hover:underline">¿Olvidaste tu contraseña?</a>
                       </div>
                       <FormControl>
                         <Input type="password" placeholder="••••••••" {...field} className="h-11" />
@@ -149,10 +182,10 @@ export default function Login() {
                 {loginMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Signing in...
+                    Iniciando sesión...
                   </>
                 ) : (
-                  "Sign in"
+                  "Iniciar sesión"
                 )}
               </Button>
             </form>

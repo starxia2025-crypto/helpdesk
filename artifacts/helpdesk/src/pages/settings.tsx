@@ -16,22 +16,22 @@ export default function Settings() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Settings</h1>
-        <p className="text-slate-500 mt-1">Manage your account preferences.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Configuración</h1>
+        <p className="text-slate-500 mt-1">Gestiona las preferencias de tu cuenta.</p>
       </div>
 
       <div className="grid md:grid-cols-4 gap-8 items-start">
         <div className="flex flex-col gap-1">
-          <Button variant="secondary" className="justify-start">Profile</Button>
-          <Button variant="ghost" className="justify-start">Notifications</Button>
-          <Button variant="ghost" className="justify-start">Security</Button>
+          <Button variant="secondary" className="justify-start">Perfil</Button>
+          <Button variant="ghost" className="justify-start">Notificaciones</Button>
+          <Button variant="ghost" className="justify-start">Seguridad</Button>
         </div>
 
         <div className="md:col-span-3 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
-              <CardDescription>Your personal information and role details.</CardDescription>
+              <CardTitle>Información de Perfil</CardTitle>
+              <CardDescription>Tu información personal y detalles de rol.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center gap-6">
@@ -49,28 +49,28 @@ export default function Settings() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Full Name</Label>
+                  <Label>Nombre completo</Label>
                   <Input defaultValue={user?.name} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Email Address</Label>
+                  <Label>Correo electrónico</Label>
                   <Input defaultValue={user?.email} disabled className="bg-slate-50" />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label>Organization / Client</Label>
-                  <Input defaultValue={user?.tenantName || 'HelpDesk Pro System'} disabled className="bg-slate-50" />
+                  <Label>Organización / Cliente</Label>
+                  <Input defaultValue={user?.tenantName || 'HelpDesk Pro Sistema'} disabled className="bg-slate-50" />
                 </div>
               </div>
             </CardContent>
             <CardFooter className="border-t bg-slate-50 dark:bg-slate-900/50 px-6 py-4">
-              <Button>Save Changes</Button>
+              <Button>Guardar cambios</Button>
             </CardFooter>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Appearance</CardTitle>
-              <CardDescription>Customize how HelpDesk Pro looks on your device.</CardDescription>
+              <CardTitle>Apariencia</CardTitle>
+              <CardDescription>Personaliza cómo se ve HelpDesk Pro en tu dispositivo.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4">
@@ -79,18 +79,18 @@ export default function Settings() {
                     <div className="h-4 bg-white rounded shadow-sm w-full" />
                     <div className="h-10 bg-white rounded shadow-sm w-full" />
                   </div>
-                  <div className="text-sm font-medium text-center text-primary">Light</div>
+                  <div className="text-sm font-medium text-center text-primary">Claro</div>
                 </div>
                 <div className="border border-slate-200 hover:border-primary/50 transition-colors rounded-xl p-4 cursor-pointer">
                   <div className="h-24 bg-slate-900 rounded-md mb-2 w-full flex flex-col gap-2 p-2">
                     <div className="h-4 bg-slate-800 rounded border border-slate-700 w-full" />
                     <div className="h-10 bg-slate-800 rounded border border-slate-700 w-full" />
                   </div>
-                  <div className="text-sm font-medium text-center text-slate-500">Dark</div>
+                  <div className="text-sm font-medium text-center text-slate-500">Oscuro</div>
                 </div>
                 <div className="border border-slate-200 hover:border-primary/50 transition-colors rounded-xl p-4 cursor-pointer">
                   <div className="h-24 bg-gradient-to-r from-slate-100 to-slate-900 rounded-md mb-2 w-full flex flex-col gap-2 p-2" />
-                  <div className="text-sm font-medium text-center text-slate-500">System</div>
+                  <div className="text-sm font-medium text-center text-slate-500">Sistema</div>
                 </div>
               </div>
             </CardContent>

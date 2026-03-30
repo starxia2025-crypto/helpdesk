@@ -8,31 +8,25 @@ import {
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { 
-  BarChart, 
-  Bar, 
+  LineChart,
+  Line,
   XAxis, 
   YAxis, 
   CartesianGrid, 
   Tooltip as RechartsTooltip, 
   ResponsiveContainer,
-  LineChart,
-  Line,
   PieChart,
   Pie,
   Cell
 } from "recharts";
-import { Ticket, Clock, CheckCircle2, AlertCircle, Building2, Users } from "lucide-react";
+import { Ticket, Clock, CheckCircle2, AlertCircle, Building2 } from "lucide-react";
 import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { StatusBadge } from "@/components/badges";
 
 export default function Dashboard() {
   const { data: user } = useGetMe();
   const tenantId = user?.role === 'superadmin' ? undefined : user?.tenantId;
-  
-  // Hardcode last 30 days for demo
-  const dateFrom = new Date();
-  dateFrom.setDate(dateFrom.getDate() - 30);
-  const dateFromStr = dateFrom.toISOString().split('T')[0];
   
   const { data: stats, isLoading: statsLoading } = useGetDashboardStats({ tenantId });
   const { data: statusData } = useGetTicketsByStatus({ tenantId });
@@ -61,47 +55,47 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Dashboard</h1>
-        <p className="text-slate-500 mt-1">Overview of your support operations.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Panel de Control</h1>
+        <p className="text-slate-500 mt-1">Resumen general de tus operaciones de soporte.</p>
       </div>
 
-      {/* KPI Cards */}
+      {/* Tarjetas KPI */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Open Tickets</CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-500">Tickets Abiertos</CardTitle>
             <Ticket className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{stats?.openTickets || 0}</div>
             <p className="text-xs text-slate-500 mt-1">
-              <span className="text-red-500 font-medium">{stats?.urgentTickets || 0} urgent</span> requiring attention
+              <span className="text-red-500 font-medium">{stats?.urgentTickets || 0} urgentes</span> requieren atención
             </p>
           </CardContent>
         </Card>
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Avg Resolution Time</CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-500">Tiempo Medio de Resolución</CardTitle>
             <Clock className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{stats?.avgResolutionHours ? `${stats.avgResolutionHours}h` : 'N/A'}</div>
             <p className="text-xs text-slate-500 mt-1">
-              Based on recent resolved tickets
+              Basado en tickets resueltos recientemente
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Resolved Today</CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-500">Resueltos</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{stats?.resolvedTickets || 0}</div>
             <p className="text-xs text-slate-500 mt-1">
-              Great work team!
+              ¡Buen trabajo, equipo!
             </p>
           </CardContent>
         </Card>
@@ -109,26 +103,26 @@ export default function Dashboard() {
         {user?.role === 'superadmin' ? (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-slate-500">Total Clients</CardTitle>
+              <CardTitle className="text-sm font-medium text-slate-500">Total de Clientes</CardTitle>
               <Building2 className="h-4 w-4 text-indigo-500" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{stats?.totalTenants || 0}</div>
               <p className="text-xs text-slate-500 mt-1">
-                Active organizations
+                Organizaciones activas
               </p>
             </CardContent>
           </Card>
         ) : (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-slate-500">New Tickets</CardTitle>
+              <CardTitle className="text-sm font-medium text-slate-500">Tickets Nuevos</CardTitle>
               <AlertCircle className="h-4 w-4 text-orange-500" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{stats?.newTickets || 0}</div>
               <p className="text-xs text-slate-500 mt-1">
-                Awaiting initial response
+                Pendientes de primera respuesta
               </p>
             </CardContent>
           </Card>
@@ -136,11 +130,11 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-7">
-        {/* Main Chart */}
+        {/* Gráfico principal */}
         <Card className="md:col-span-4">
           <CardHeader>
-            <CardTitle>Ticket Volume</CardTitle>
-            <CardDescription>Created vs Resolved over time</CardDescription>
+            <CardTitle>Volumen de Tickets</CardTitle>
+            <CardDescription>Creados vs. Resueltos en el tiempo</CardDescription>
           </CardHeader>
           <CardContent className="px-2">
             <div className="h-[300px] w-full">
@@ -153,29 +147,29 @@ export default function Dashboard() {
                       tick={{fontSize: 12, fill: '#64748b'}} 
                       axisLine={false} 
                       tickLine={false} 
-                      tickFormatter={(val) => format(new Date(val), 'MMM d')}
+                      tickFormatter={(val) => format(new Date(val), 'd MMM', { locale: es })}
                     />
                     <YAxis tick={{fontSize: 12, fill: '#64748b'}} axisLine={false} tickLine={false} />
                     <RechartsTooltip 
                       contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      labelFormatter={(val) => format(new Date(val), 'MMM d, yyyy')}
+                      labelFormatter={(val) => format(new Date(val), "d 'de' MMMM, yyyy", { locale: es })}
                     />
-                    <Line type="monotone" dataKey="created" name="Created" stroke="#6366f1" strokeWidth={3} dot={false} activeDot={{r: 6}} />
-                    <Line type="monotone" dataKey="resolved" name="Resolved" stroke="#10b981" strokeWidth={3} dot={false} activeDot={{r: 6}} />
+                    <Line type="monotone" dataKey="created" name="Creados" stroke="#6366f1" strokeWidth={3} dot={false} activeDot={{r: 6}} />
+                    <Line type="monotone" dataKey="resolved" name="Resueltos" stroke="#10b981" strokeWidth={3} dot={false} activeDot={{r: 6}} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-slate-400">Not enough data to display</div>
+                <div className="h-full flex items-center justify-center text-slate-400">No hay suficientes datos para mostrar</div>
               )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Status Donut */}
+        {/* Donut por estado */}
         <Card className="md:col-span-3">
           <CardHeader>
-            <CardTitle>Tickets by Status</CardTitle>
-            <CardDescription>Current snapshot of all open tickets</CardDescription>
+            <CardTitle>Tickets por Estado</CardTitle>
+            <CardDescription>Instantánea actual de todos los tickets</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[300px] w-full flex flex-col items-center justify-center">
@@ -202,18 +196,18 @@ export default function Dashboard() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="text-slate-400">No active tickets</div>
+                <div className="text-slate-400">Sin tickets activos</div>
               )}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Recent Activity */}
+      {/* Actividad reciente */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Latest updates across your operations</CardDescription>
+          <CardTitle>Actividad Reciente</CardTitle>
+          <CardDescription>Últimas actualizaciones en tus operaciones</CardDescription>
         </CardHeader>
         <CardContent>
           {activity && activity.length > 0 ? (
@@ -227,7 +221,7 @@ export default function Dashboard() {
                       {item.entityTitle && <span className="text-slate-600 dark:text-slate-400"> "{item.entityTitle}"</span>}
                     </p>
                     <div className="flex items-center text-xs text-slate-500 gap-2">
-                      <span>{format(new Date(item.createdAt), 'MMM d, h:mm a')}</span>
+                      <span>{format(new Date(item.createdAt), "d MMM, HH:mm", { locale: es })}</span>
                       {item.tenantName && (
                         <>
                           <span>•</span>
@@ -240,7 +234,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <div className="py-8 text-center text-slate-500">No recent activity</div>
+            <div className="py-8 text-center text-slate-500">Sin actividad reciente</div>
           )}
         </CardContent>
       </Card>

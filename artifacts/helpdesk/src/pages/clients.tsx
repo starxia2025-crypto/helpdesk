@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Search, Plus, Building2, Users, Ticket } from "lucide-react";
 import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 export default function Clients() {
   const [search, setSearch] = useState("");
@@ -29,12 +30,12 @@ export default function Clients() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Clients</h1>
-          <p className="text-slate-500 mt-1">Manage tenant organizations and client schools.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Clientes</h1>
+          <p className="text-slate-500 mt-1">Gestiona organizaciones y colegios clientes.</p>
         </div>
         <Button className="gap-2 shrink-0">
           <Plus className="h-4 w-4" />
-          Add Client
+          Añadir Cliente
         </Button>
       </div>
 
@@ -42,7 +43,7 @@ export default function Clients() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input 
-            placeholder="Search clients by name, domain, or email..." 
+            placeholder="Buscar clientes por nombre, dominio o correo..." 
             className="pl-9 w-full max-w-md"
             value={search}
             onChange={(e) => {
@@ -57,12 +58,12 @@ export default function Clients() {
         <Table>
           <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
             <TableRow>
-              <TableHead className="font-semibold">Client Name</TableHead>
-              <TableHead className="font-semibold">Status</TableHead>
-              <TableHead className="text-center font-semibold">Users</TableHead>
-              <TableHead className="text-center font-semibold">Open Tickets</TableHead>
+              <TableHead className="font-semibold">Nombre del Cliente</TableHead>
+              <TableHead className="font-semibold">Estado</TableHead>
+              <TableHead className="text-center font-semibold">Usuarios</TableHead>
+              <TableHead className="text-center font-semibold">Tickets Abiertos</TableHead>
               <TableHead className="text-center font-semibold">Total Tickets</TableHead>
-              <TableHead className="text-right font-semibold">Created</TableHead>
+              <TableHead className="text-right font-semibold">Creado</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -80,7 +81,7 @@ export default function Clients() {
             ) : tenantsData?.data.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-48 text-center text-slate-500">
-                  No clients found.
+                  No se encontraron clientes.
                 </TableCell>
               </TableRow>
             ) : (
@@ -99,7 +100,7 @@ export default function Clients() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={tenant.active ? "default" : "secondary"} className={tenant.active ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-100" : ""}>
-                      {tenant.active ? 'Active' : 'Inactive'}
+                      {tenant.active ? 'Activo' : 'Inactivo'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
@@ -118,7 +119,7 @@ export default function Clients() {
                     {tenant.totalTickets}
                   </TableCell>
                   <TableCell className="text-right text-sm text-slate-500">
-                    {format(new Date(tenant.createdAt), 'MMM d, yyyy')}
+                    {format(new Date(tenant.createdAt), "d MMM yyyy", { locale: es })}
                   </TableCell>
                 </TableRow>
               ))
@@ -129,11 +130,11 @@ export default function Clients() {
         {tenantsData && tenantsData.totalPages > 1 && (
           <div className="p-4 border-t flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
             <span className="text-sm text-slate-500">
-              Showing {(page - 1) * 20 + 1} to {Math.min(page * 20, tenantsData.total)} of {tenantsData.total}
+              Mostrando {(page - 1) * 20 + 1}–{Math.min(page * 20, tenantsData.total)} de {tenantsData.total}
             </span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page === tenantsData.totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
+              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+              <Button variant="outline" size="sm" disabled={page === tenantsData.totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
             </div>
           </div>
         )}

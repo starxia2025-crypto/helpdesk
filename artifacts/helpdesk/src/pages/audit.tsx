@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { Activity, ShieldAlert } from "lucide-react";
 
 export default function Audit() {
@@ -29,9 +30,9 @@ export default function Audit() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
             <ShieldAlert className="h-6 w-6 text-primary" />
-            Audit Logs
+            Registros de Auditoría
           </h1>
-          <p className="text-slate-500 mt-1">System-wide activity tracking and compliance records.</p>
+          <p className="text-slate-500 mt-1">Seguimiento de actividad del sistema y registros de cumplimiento.</p>
         </div>
       </div>
 
@@ -39,11 +40,11 @@ export default function Audit() {
         <Table>
           <TableHeader className="bg-slate-50 dark:bg-slate-800/50">
             <TableRow>
-              <TableHead className="font-semibold w-[180px]">Timestamp</TableHead>
-              <TableHead className="font-semibold">User</TableHead>
-              <TableHead className="font-semibold">Action</TableHead>
-              <TableHead className="font-semibold">Entity</TableHead>
-              <TableHead className="font-semibold">Details</TableHead>
+              <TableHead className="font-semibold w-[180px]">Fecha y Hora</TableHead>
+              <TableHead className="font-semibold">Usuario</TableHead>
+              <TableHead className="font-semibold">Acción</TableHead>
+              <TableHead className="font-semibold">Entidad</TableHead>
+              <TableHead className="font-semibold">Detalles</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -61,14 +62,14 @@ export default function Audit() {
               <TableRow>
                 <TableCell colSpan={5} className="h-48 text-center text-slate-500">
                   <Activity className="h-8 w-8 mx-auto mb-2 text-slate-300" />
-                  No audit logs found.
+                  No se encontraron registros de auditoría.
                 </TableCell>
               </TableRow>
             ) : (
               auditData?.data.map((log) => (
                 <TableRow key={log.id} className="text-sm">
                   <TableCell className="text-slate-500 whitespace-nowrap">
-                    {format(new Date(log.createdAt), 'MMM d, yyyy HH:mm:ss')}
+                    {format(new Date(log.createdAt), "d MMM yyyy HH:mm:ss", { locale: es })}
                   </TableCell>
                   <TableCell className="font-medium">
                     {log.userName}
@@ -96,11 +97,11 @@ export default function Audit() {
         {auditData && auditData.totalPages > 1 && (
           <div className="p-4 border-t flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
             <span className="text-sm text-slate-500">
-              Showing {(page - 1) * 50 + 1} to {Math.min(page * 50, auditData.total)} of {auditData.total}
+              Mostrando {(page - 1) * 50 + 1}–{Math.min(page * 50, auditData.total)} de {auditData.total}
             </span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page === auditData.totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
+              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+              <Button variant="outline" size="sm" disabled={page === auditData.totalPages} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
             </div>
           </div>
         )}

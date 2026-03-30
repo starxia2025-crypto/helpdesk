@@ -38,12 +38,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   if (!user) return <>{children}</>;
 
   const navItems = [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ['superadmin', 'admin_cliente', 'tecnico', 'usuario_cliente', 'visor_cliente'] },
+    { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ['superadmin', 'admin_cliente', 'tecnico', 'usuario_cliente', 'visor_cliente'] },
     { href: "/tickets", label: "Tickets", icon: Ticket, roles: ['superadmin', 'admin_cliente', 'tecnico', 'usuario_cliente'] },
     { href: "/portal", label: "Portal", icon: BookOpen, roles: ['superadmin', 'admin_cliente', 'tecnico', 'usuario_cliente', 'visor_cliente'] },
-    { href: "/clients", label: "Clients", icon: Building2, roles: ['superadmin'] },
-    { href: "/users", label: "Users", icon: UsersIcon, roles: ['superadmin', 'admin_cliente'] },
-    { href: "/audit", label: "Audit Logs", icon: ActivitySquare, roles: ['superadmin', 'admin_cliente'] },
+    { href: "/clients", label: "Clientes", icon: Building2, roles: ['superadmin'] },
+    { href: "/users", label: "Usuarios", icon: UsersIcon, roles: ['superadmin', 'admin_cliente'] },
+    { href: "/audit", label: "Auditoría", icon: ActivitySquare, roles: ['superadmin', 'admin_cliente'] },
   ].filter(item => item.roles.includes(user.role));
 
   const NavLinks = () => (
@@ -71,7 +71,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-950">
-      {/* Desktop Sidebar */}
+      {/* Barra lateral escritorio */}
       <aside className="hidden md:flex flex-col w-64 border-r bg-white dark:bg-slate-900 z-10">
         <div className="h-16 flex items-center px-6 border-b">
           <Link href="/dashboard">
@@ -83,7 +83,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex-1 py-6 px-4 overflow-y-auto">
           <div className="mb-6 px-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Main Menu</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Menú Principal</p>
             <NavLinks />
           </div>
         </div>
@@ -96,27 +96,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </Avatar>
                 <div className="flex flex-col items-start text-sm truncate">
                   <span className="font-medium truncate w-full">{user.name}</span>
-                  <span className="text-xs text-slate-500 truncate w-full">{user.tenantName || 'System'}</span>
+                  <span className="text-xs text-slate-500 truncate w-full">{user.tenantName || 'Sistema'}</span>
                 </div>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuLabel>Mi cuenta</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setLocation("/settings")} className="cursor-pointer">
                 <Settings className="mr-2 h-4 w-4" />
-                Settings
+                Configuración
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => logout.mutate()} className="cursor-pointer text-destructive focus:text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />
-                Log out
+                Cerrar sesión
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </aside>
 
-      {/* Mobile Header & Content */}
+      {/* Cabecera móvil */}
       <div className="flex flex-col flex-1 min-w-0">
         <header className="h-16 flex items-center justify-between px-4 border-b bg-white dark:bg-slate-900 md:hidden sticky top-0 z-20">
           <div className="flex items-center gap-3">
@@ -151,15 +151,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuLabel>Mi cuenta</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setLocation("/settings")}>
                 <Settings className="mr-2 h-4 w-4" />
-                Settings
+                Configuración
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => logout.mutate()} className="text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />
-                Log out
+                Cerrar sesión
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

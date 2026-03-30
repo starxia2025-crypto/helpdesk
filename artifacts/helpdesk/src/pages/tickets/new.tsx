@@ -18,8 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 const ticketSchema = z.object({
-  title: z.string().min(5, "Title must be at least 5 characters"),
-  description: z.string().min(10, "Description must be at least 10 characters"),
+  title: z.string().min(5, "El asunto debe tener al menos 5 caracteres"),
+  description: z.string().min(10, "La descripción debe tener al menos 10 caracteres"),
   priority: z.enum(["baja", "media", "alta", "urgente"] as const).optional(),
   category: z.string().optional(),
   tenantId: z.coerce.number().optional(),
@@ -66,20 +66,20 @@ export default function NewTicket() {
     <div className="max-w-3xl mx-auto space-y-6">
       <Button variant="ghost" onClick={() => setLocation("/tickets")} className="gap-2 -ml-4 text-slate-500">
         <ArrowLeft className="h-4 w-4" />
-        Back to Tickets
+        Volver a Tickets
       </Button>
 
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Create Ticket</h1>
-        <p className="text-slate-500 mt-1">Submit a new support request or incident.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Crear Ticket</h1>
+        <p className="text-slate-500 mt-1">Envía una nueva solicitud de soporte o incidencia.</p>
       </div>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <Card>
             <CardHeader>
-              <CardTitle>Ticket Details</CardTitle>
-              <CardDescription>Provide as much context as possible to help us resolve this quickly.</CardDescription>
+              <CardTitle>Detalles del Ticket</CardTitle>
+              <CardDescription>Proporciona todo el contexto posible para ayudarnos a resolver esto rápidamente.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {user?.role === 'superadmin' && (
@@ -88,14 +88,14 @@ export default function NewTicket() {
                   name="tenantId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Client / Tenant *</FormLabel>
+                      <FormLabel>Cliente / Tenant *</FormLabel>
                       <Select 
                         onValueChange={(v) => field.onChange(parseInt(v, 10))} 
                         defaultValue={field.value?.toString()}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select a client" />
+                            <SelectValue placeholder="Selecciona un cliente" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -115,9 +115,9 @@ export default function NewTicket() {
                 name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Subject *</FormLabel>
+                    <FormLabel>Asunto *</FormLabel>
                     <FormControl>
-                      <Input placeholder="Short summary of the issue" {...field} />
+                      <Input placeholder="Resumen breve del problema" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -130,19 +130,19 @@ export default function NewTicket() {
                   name="category"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Category</FormLabel>
+                      <FormLabel>Categoría</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
+                            <SelectValue placeholder="Selecciona categoría" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="general">General Support</SelectItem>
-                          <SelectItem value="hardware">Hardware Issue</SelectItem>
-                          <SelectItem value="software">Software/App Issue</SelectItem>
-                          <SelectItem value="network">Network/Connectivity</SelectItem>
-                          <SelectItem value="access">Access/Accounts</SelectItem>
+                          <SelectItem value="general">Soporte General</SelectItem>
+                          <SelectItem value="hardware">Problema de Hardware</SelectItem>
+                          <SelectItem value="software">Problema de Software/App</SelectItem>
+                          <SelectItem value="network">Red / Conectividad</SelectItem>
+                          <SelectItem value="access">Acceso / Cuentas</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -155,18 +155,18 @@ export default function NewTicket() {
                   name="priority"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Priority</FormLabel>
+                      <FormLabel>Prioridad</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select priority" />
+                            <SelectValue placeholder="Selecciona prioridad" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value={TicketPriority.baja}>Low</SelectItem>
-                          <SelectItem value={TicketPriority.media}>Medium</SelectItem>
-                          <SelectItem value={TicketPriority.alta}>High</SelectItem>
-                          <SelectItem value={TicketPriority.urgente}>Urgent</SelectItem>
+                          <SelectItem value={TicketPriority.baja}>Baja</SelectItem>
+                          <SelectItem value={TicketPriority.media}>Media</SelectItem>
+                          <SelectItem value={TicketPriority.alta}>Alta</SelectItem>
+                          <SelectItem value={TicketPriority.urgente}>Urgente</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -180,10 +180,10 @@ export default function NewTicket() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Description *</FormLabel>
+                    <FormLabel>Descripción *</FormLabel>
                     <FormControl>
                       <Textarea 
-                        placeholder="Please describe the issue in detail..." 
+                        placeholder="Describe el problema en detalle..." 
                         className="min-h-[200px] resize-y" 
                         {...field} 
                       />
@@ -195,11 +195,11 @@ export default function NewTicket() {
             </CardContent>
             <CardFooter className="bg-slate-50 dark:bg-slate-900/50 flex justify-end gap-3 px-6 py-4 rounded-b-xl border-t">
               <Button type="button" variant="outline" onClick={() => setLocation("/tickets")}>
-                Cancel
+                Cancelar
               </Button>
               <Button type="submit" disabled={createMutation.isPending}>
                 {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Ticket
+                Crear Ticket
               </Button>
             </CardFooter>
           </Card>

@@ -5,7 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Search, Book, Video, HelpCircle, Link as LinkIcon, FileText, FileDown } from "lucide-react";
-import { format } from "date-fns";
+
+const tipoLabels: Record<string, string> = {
+  video: "Vídeo",
+  faq: "FAQ",
+  link: "Enlace",
+  manual: "Manual",
+  tutorial: "Tutorial",
+  document: "Documento",
+};
 
 export default function Portal() {
   const { data: user } = useGetMe();
@@ -30,16 +38,13 @@ export default function Portal() {
     }
   };
 
-  const getTypeLabel = (type: string) => {
-    return type.charAt(0).toUpperCase() + type.slice(1);
-  };
+  const getTypeLabel = (type: string) => tipoLabels[type] || type;
 
-  // Derive categories from data
   const categories = ['all', ...Array.from(new Set(docsData?.data.map(d => d.category).filter(Boolean) as string[]))];
 
   return (
     <div className="space-y-8">
-      {/* Hero Section */}
+      {/* Hero */}
       <div className="bg-primary text-primary-foreground rounded-2xl p-8 md:p-12 relative overflow-hidden shadow-lg">
         <div className="absolute inset-0 z-0 opacity-10">
           <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -53,14 +58,14 @@ export default function Portal() {
         </div>
         
         <div className="relative z-10 max-w-2xl mx-auto text-center space-y-6">
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight">How can we help?</h1>
-          <p className="text-primary-foreground/80 text-lg">Search our knowledge base for manuals, video tutorials, and answers to common questions.</p>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight">¿En qué podemos ayudarte?</h1>
+          <p className="text-primary-foreground/80 text-lg">Consulta nuestra base de conocimiento con manuales, tutoriales en vídeo y respuestas a preguntas frecuentes.</p>
           
           <div className="relative max-w-xl mx-auto">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
             <Input 
               className="h-14 pl-12 text-lg rounded-full bg-white/10 border-white/20 text-white placeholder:text-white/50 focus-visible:ring-white/30 shadow-inner"
-              placeholder="Search for articles..."
+              placeholder="Buscar artículos..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -69,9 +74,9 @@ export default function Portal() {
       </div>
 
       <div className="flex flex-col md:flex-row gap-8">
-        {/* Sidebar Categories */}
+        {/* Categorías */}
         <div className="w-full md:w-64 shrink-0 space-y-2">
-          <h3 className="font-semibold text-sm uppercase tracking-wider text-slate-500 mb-4 px-3">Categories</h3>
+          <h3 className="font-semibold text-sm uppercase tracking-wider text-slate-500 mb-4 px-3">Categorías</h3>
           <div className="flex md:flex-col flex-wrap gap-1">
             {categories.map(cat => (
               <Button 
@@ -80,13 +85,13 @@ export default function Portal() {
                 className={`justify-start capitalize ${activeCategory === cat ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-600 hover:text-slate-900'}`}
                 onClick={() => setActiveCategory(cat)}
               >
-                {cat}
+                {cat === 'all' ? 'Todos' : cat}
               </Button>
             ))}
           </div>
         </div>
 
-        {/* Content Grid */}
+        {/* Contenido */}
         <div className="flex-1">
           {isLoading ? (
             <div className="grid sm:grid-cols-2 gap-4">
@@ -95,8 +100,8 @@ export default function Portal() {
           ) : docsData?.data.length === 0 ? (
             <div className="text-center py-20 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed">
               <HelpCircle className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-1">No articles found</h3>
-              <p className="text-slate-500">We couldn't find anything matching your search criteria.</p>
+              <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-1">No se encontraron artículos</h3>
+              <p className="text-slate-500">No hay contenido que coincida con tu búsqueda.</p>
             </div>
           ) : (
             <div className="grid sm:grid-cols-2 gap-4">

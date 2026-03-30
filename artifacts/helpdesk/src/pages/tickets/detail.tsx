@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Send, Clock, User, Building, Paperclip, Lock, LockOpen } from "lucide-react";
 import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { StatusBadge, PriorityBadge } from "@/components/badges";
 import { Separator } from "@/components/ui/separator";
 
@@ -40,11 +41,7 @@ export default function TicketDetail() {
   });
 
   const changeStatus = useChangeTicketStatus({
-    mutation: {
-      onSuccess: () => {
-        // Option to invalidate query or just let it be
-      }
-    }
+    mutation: {}
   });
 
   const isStaff = user?.role === 'superadmin' || user?.role === 'tecnico';
@@ -62,7 +59,7 @@ export default function TicketDetail() {
     );
   }
 
-  if (!ticket) return <div>Ticket not found</div>;
+  if (!ticket) return <div>Ticket no encontrado</div>;
 
   const handleStatusChange = (status: string) => {
     changeStatus.mutate({ 
@@ -83,10 +80,10 @@ export default function TicketDetail() {
     <div className="max-w-6xl mx-auto space-y-6">
       <Button variant="ghost" onClick={() => setLocation("/tickets")} className="gap-2 -ml-4 text-slate-500">
         <ArrowLeft className="h-4 w-4" />
-        Back to Tickets
+        Volver a Tickets
       </Button>
 
-      {/* Header Card */}
+      {/* Cabecera */}
       <Card className="border-t-4 border-t-primary shadow-sm">
         <CardHeader className="pb-4">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -104,16 +101,15 @@ export default function TicketDetail() {
               <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500 mt-2">
                 <span className="flex items-center gap-1.5"><User className="h-4 w-4" /> {ticket.createdByName}</span>
                 <span className="flex items-center gap-1.5"><Building className="h-4 w-4" /> {ticket.tenantName}</span>
-                <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> {format(new Date(ticket.createdAt), 'MMM d, yyyy h:mm a')}</span>
+                <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> {format(new Date(ticket.createdAt), "d MMM yyyy HH:mm", { locale: es })}</span>
               </div>
             </div>
 
-            {/* Actions */}
             {isStaff && (
               <div className="flex flex-col sm:flex-row gap-3 md:min-w-[200px] shrink-0">
                 <Select value={ticket.status} onValueChange={handleStatusChange}>
                   <SelectTrigger className="font-medium">
-                    <SelectValue placeholder="Status" />
+                    <SelectValue placeholder="Estado" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={TicketStatus.nuevo}>Nuevo</SelectItem>
@@ -132,9 +128,9 @@ export default function TicketDetail() {
       </Card>
 
       <div className="grid md:grid-cols-3 gap-6">
-        {/* Main Conversation Thread */}
+        {/* Hilo principal */}
         <div className="md:col-span-2 space-y-6">
-          {/* Original Description */}
+          {/* Descripción original */}
           <Card className="shadow-sm">
             <CardContent className="pt-6">
               <div className="prose dark:prose-invert max-w-none whitespace-pre-wrap text-slate-700 dark:text-slate-300">
@@ -143,7 +139,7 @@ export default function TicketDetail() {
             </CardContent>
           </Card>
 
-          {/* Comments List */}
+          {/* Lista de comentarios */}
           <div className="space-y-4">
             {comments?.map((comment) => (
               <Card 
@@ -166,11 +162,11 @@ export default function TicketDetail() {
                         {comment.authorName}
                         {comment.isInternal && (
                           <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded flex items-center gap-1">
-                            <Lock className="h-3 w-3" /> Internal
+                            <Lock className="h-3 w-3" /> Interno
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-slate-500">{format(new Date(comment.createdAt), 'MMM d, h:mm a')}</div>
+                      <div className="text-xs text-slate-500">{format(new Date(comment.createdAt), "d MMM, HH:mm", { locale: es })}</div>
                     </div>
                   </div>
                 </CardHeader>
@@ -183,11 +179,11 @@ export default function TicketDetail() {
             ))}
           </div>
 
-          {/* New Comment Box */}
+          {/* Caja de comentario nuevo */}
           <Card className={`shadow-sm border-2 ${isInternal ? 'border-amber-200 dark:border-amber-800/50 bg-amber-50/20' : 'border-primary/20 focus-within:border-primary'}`}>
             <CardContent className="p-4">
               <Textarea 
-                placeholder={isInternal ? "Write an internal note (clients won't see this)..." : "Write a response..."}
+                placeholder={isInternal ? "Escribe una nota interna (los clientes no la verán)..." : "Escribe una respuesta..."}
                 className={`min-h-[120px] resize-y border-0 focus-visible:ring-0 p-0 shadow-none text-base bg-transparent ${isInternal ? 'placeholder:text-amber-700/40' : ''}`}
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
@@ -206,12 +202,12 @@ export default function TicketDetail() {
                       onClick={() => setIsInternal(!isInternal)}
                     >
                       {isInternal ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
-                      Internal Note
+                      Nota Interna
                     </Button>
                   )}
                   <Button type="button" variant="ghost" size="sm" className="gap-2 text-slate-500">
                     <Paperclip className="h-4 w-4" />
-                    Attach
+                    Adjuntar
                   </Button>
                 </div>
                 <Button 
@@ -220,27 +216,27 @@ export default function TicketDetail() {
                   className={`gap-2 ${isInternal ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
                 >
                   <Send className="h-4 w-4" />
-                  {isInternal ? 'Save Note' : 'Send Reply'}
+                  {isInternal ? 'Guardar Nota' : 'Enviar Respuesta'}
                 </Button>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Sidebar Info */}
+        {/* Panel lateral */}
         <div className="space-y-6">
           <Card className="shadow-sm">
             <CardHeader className="p-4 pb-2">
-              <h3 className="font-semibold text-sm uppercase tracking-wider text-slate-500">Properties</h3>
+              <h3 className="font-semibold text-sm uppercase tracking-wider text-slate-500">Propiedades</h3>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-4">
               <div>
-                <div className="text-xs text-slate-500 mb-1">Category</div>
-                <div className="font-medium text-sm capitalize">{ticket.category || 'None'}</div>
+                <div className="text-xs text-slate-500 mb-1">Categoría</div>
+                <div className="font-medium text-sm capitalize">{ticket.category || 'Sin categoría'}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 mb-1">Assigned To</div>
-                <div className="font-medium text-sm">{ticket.assignedToName || 'Unassigned'}</div>
+                <div className="text-xs text-slate-500 mb-1">Asignado a</div>
+                <div className="font-medium text-sm">{ticket.assignedToName || 'Sin asignar'}</div>
               </div>
               {ticket.customFields && Object.keys(ticket.customFields).length > 0 && (
                 <>
@@ -259,7 +255,7 @@ export default function TicketDetail() {
           {isStaff && ticket.auditLogs && ticket.auditLogs.length > 0 && (
             <Card className="shadow-sm">
               <CardHeader className="p-4 pb-2">
-                <h3 className="font-semibold text-sm uppercase tracking-wider text-slate-500">History</h3>
+                <h3 className="font-semibold text-sm uppercase tracking-wider text-slate-500">Historial</h3>
               </CardHeader>
               <CardContent className="p-4 pt-0">
                 <div className="space-y-4">
@@ -269,7 +265,7 @@ export default function TicketDetail() {
                       <div>
                         <span className="font-medium">{log.userName}</span> {log.action}
                         <div className="text-xs text-slate-500 mt-0.5">
-                          {format(new Date(log.createdAt), 'MMM d, h:mm a')}
+                          {format(new Date(log.createdAt), "d MMM, HH:mm", { locale: es })}
                         </div>
                       </div>
                     </div>
