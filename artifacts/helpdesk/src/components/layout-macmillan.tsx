@@ -105,7 +105,7 @@ export function MacmillanLayout({ children }: { children: React.ReactNode }) {
                 className="flex h-10 w-10 items-center justify-center rounded-lg border transition-transform hover:-translate-y-0.5"
                 style={{ borderColor: dividerColor, backgroundColor: tileColor }}
               >
-                {shortcut.icon.startsWith("http") ? (
+                {shortcut.icon.startsWith("http") || shortcut.icon.startsWith("data:") ? (
                   <img src={shortcut.icon} alt={shortcut.label} className="h-5 w-5 object-contain" />
                 ) : (
                   <span className="text-base" aria-hidden="true">{shortcut.icon}</span>

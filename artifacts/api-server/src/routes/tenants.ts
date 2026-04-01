@@ -133,6 +133,14 @@ router.post("/", requireAuth, requireRole("superadmin", "tecnico", "manager"), a
       return;
     }
 
+    if (error?.code === "42703" || error?.code === "42P01") {
+      res.status(500).json({
+        error: "DatabaseOutOfDate",
+        message: "La base de datos no esta actualizada para la configuracion de clientes. Ejecuta pnpm --filter @workspace/db run push en el servicio api y vuelve a intentarlo.",
+      });
+      return;
+    }
+
     console.error("Create tenant failed", error);
     res.status(500).json({ error: "InternalServerError", message: "No se pudo crear el cliente." });
   }

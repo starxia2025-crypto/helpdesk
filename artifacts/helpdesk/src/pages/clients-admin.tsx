@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Search, Plus, Building2, Users, Ticket, Link as LinkIcon } from "lucide-react";
+import { Search, Plus, Building2, Users, Ticket, Link as LinkIcon, Trash2, Upload, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useForm } from "react-hook-form";
@@ -22,7 +22,6 @@ import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { toast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 
 const sidebarPalette = [
   { label: "Azul Macmillan", value: "#0f172a" },
@@ -42,30 +41,37 @@ const textPalette = [
 
 const createTenantSchema = z.object({
   name: z.string().trim().min(2, "Indica el nombre del cliente"),
-  slug: z.string().trim().min(2, "Indica un slug").regex(/^[a-z0-9-]+$/, "Usa solo minusculas, numeros y guiones"),
   contactEmail: z.union([z.literal(""), z.string().trim().email("Introduce un email valido")]).optional(),
-  primaryColor: z.union([z.literal(""), z.string().trim().regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/, "Usa un color hexadecimal valido")]).optional(),
   sidebarBackgroundColor: z.string().min(1, "Selecciona un color para el menu"),
   sidebarTextColor: z.string().min(1, "Selecciona un color de texto"),
-  quickLinksText: z.string().optional(),
 });
 
 type CreateTenantValues = z.infer<typeof createTenantSchema>;
+type QuickLinkDraft = {
+  id: string;
+  label: string;
+  url: string;
+  icon: string;
+};
 
-function parseQuickLinks(rawText: string | undefined) {
-  if (!rawText?.trim()) return [];
+function slugifyTenantName(name: string) {
+  const base = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
-  return rawText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [label, url, icon] = line.split("|").map((part) => part.trim());
-      if (!label || !url || !icon) {
-        throw new Error("Cada acceso directo debe seguir el formato Nombre | URL | Icono");
-      }
-      return { label, url, icon };
-    });
+  return base || `cliente-${Date.now()}`;
+}
+
+function createEmptyQuickLink(): QuickLinkDraft {
+  return {
+    id: crypto.randomUUID(),
+    label: "",
+    url: "",
+    icon: "",
+  };
 }
 
 export default function ClientsAdmin() {
@@ -73,6 +79,7 @@ export default function ClientsAdmin() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
+  const [quickLinks, setQuickLinks] = useState<QuickLinkDraft[]>([]);
 
   const { data: tenantsData, isLoading, refetch } = useListTenants({
     page,
@@ -89,12 +96,9 @@ export default function ClientsAdmin() {
     resolver: zodResolver(createTenantSchema),
     defaultValues: {
       name: "",
-      slug: "",
       contactEmail: "",
-      primaryColor: "#2563eb",
       sidebarBackgroundColor: "#0f172a",
       sidebarTextColor: "#ffffff",
-      quickLinksText: "",
     },
   });
 
@@ -111,13 +115,11 @@ export default function ClientsAdmin() {
         setOpen(false);
         form.reset({
           name: "",
-          slug: "",
           contactEmail: "",
-          primaryColor: "#2563eb",
           sidebarBackgroundColor: "#0f172a",
           sidebarTextColor: "#ffffff",
-          quickLinksText: "",
         });
+        setQuickLinks([]);
         await refetch();
       },
       onError: (error) => {
@@ -142,26 +144,83 @@ export default function ClientsAdmin() {
     }
 
     try {
-      const quickLinks = parseQuickLinks(values.quickLinksText);
+      const normalizedQuickLinks = quickLinks
+        .filter((link) => link.label.trim() || link.url.trim() || link.icon.trim())
+        .map((link, index) => {
+          const label = link.label.trim();
+          const url = link.url.trim();
+          const icon = link.icon.trim();
+
+          if (!label || !url) {
+            throw new Error(`Completa nombre y URL en el acceso directo ${index + 1}.`);
+          }
+
+          try {
+            new URL(url);
+          } catch {
+            throw new Error(`La URL del acceso directo ${index + 1} no es valida.`);
+          }
+
+          return { label, url, icon: icon || "LINK" };
+        });
 
       createTenant.mutate({
         data: {
           name: values.name.trim(),
-          slug: values.slug.trim().toLowerCase(),
+          slug: slugifyTenantName(values.name),
           ...(values.contactEmail ? { contactEmail: values.contactEmail.trim().toLowerCase() } : {}),
-          ...(values.primaryColor ? { primaryColor: values.primaryColor.trim() } : {}),
           sidebarBackgroundColor: values.sidebarBackgroundColor,
           sidebarTextColor: values.sidebarTextColor,
-          quickLinks,
+          quickLinks: normalizedQuickLinks,
         } as any,
       });
     } catch (error) {
       toast({
         title: "Accesos directos no validos",
-        description: error instanceof Error ? error.message : "Revisa el formato de los accesos directos.",
+        description: error instanceof Error ? error.message : "Revisa la configuracion de accesos directos.",
         variant: "destructive",
       });
     }
+  }
+
+  function addQuickLink() {
+    setQuickLinks((current) => [...current, createEmptyQuickLink()]);
+  }
+
+  function updateQuickLink(id: string, changes: Partial<QuickLinkDraft>) {
+    setQuickLinks((current) => current.map((link) => (link.id === id ? { ...link, ...changes } : link)));
+  }
+
+  function removeQuickLink(id: string) {
+    setQuickLinks((current) => current.filter((link) => link.id !== id));
+  }
+
+  function onShortcutIconSelected(id: string, file?: File | null) {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Icono no valido",
+        description: "Selecciona una imagen PNG, JPG, SVG o similar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file.size > 1024 * 1024) {
+      toast({
+        title: "Icono demasiado grande",
+        description: "Usa una imagen de hasta 1 MB para el acceso directo.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateQuickLink(id, { icon: typeof reader.result === "string" ? reader.result : "" });
+    };
+    reader.readAsDataURL(file);
   }
 
   return (
@@ -186,55 +245,29 @@ export default function ClientsAdmin() {
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nombre</FormLabel>
-                          <FormControl><Input placeholder="Ej. Grupo Escolar Norte" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="slug"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Slug</FormLabel>
-                          <FormControl><Input placeholder="grupo-escolar-norte" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nombre</FormLabel>
+                        <FormControl><Input placeholder="Ej. Grupo Escolar Norte" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <FormField
-                      control={form.control}
-                      name="contactEmail"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email de contacto</FormLabel>
-                          <FormControl><Input placeholder="soporte@cliente.es" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="primaryColor"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Color principal</FormLabel>
-                          <FormControl><Input placeholder="#2563eb" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  <FormField
+                    control={form.control}
+                    name="contactEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email de contacto</FormLabel>
+                        <FormControl><Input placeholder="soporte@cliente.es" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <FormField
@@ -290,24 +323,80 @@ export default function ClientsAdmin() {
                     </div>
                   </div>
 
-                  <FormField
-                    control={form.control}
-                    name="quickLinksText"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Accesos directos</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            className="min-h-[140px]"
-                            placeholder={"Una linea por acceso directo. Formato: Nombre | URL | Icono\nEjemplo: MEE Platform | https://mee.example.com | https://cdn.simpleicons.org/googleclassroom"}
-                            {...field}
-                          />
-                        </FormControl>
-                        <p className="text-xs text-slate-500">El icono puede ser una URL de imagen pequena. Estos accesos se mostraran como iconos con tooltip en el menu lateral.</p>
-                        <FormMessage />
-                      </FormItem>
+                  <div className="space-y-3 rounded-2xl border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Accesos directos</p>
+                        <p className="text-xs text-slate-500">Anade enlaces a plataformas del cliente con su icono y URL.</p>
+                      </div>
+                      <Button type="button" variant="outline" className="gap-2" onClick={addQuickLink}>
+                        <Plus className="h-4 w-4" />
+                        Anadir acceso
+                      </Button>
+                    </div>
+
+                    {quickLinks.length === 0 ? (
+                      <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-slate-500">
+                        Todavia no hay accesos directos. Pulsa en "Anadir acceso" para crear uno.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {quickLinks.map((link, index) => (
+                          <div key={link.id} className="rounded-xl border p-4">
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                              <p className="text-sm font-semibold text-slate-900">Acceso directo {index + 1}</p>
+                              <Button type="button" variant="ghost" size="icon" onClick={() => removeQuickLink(link.id)}>
+                                <Trash2 className="h-4 w-4 text-slate-500" />
+                              </Button>
+                            </div>
+                            <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr_auto]">
+                              <Input
+                                placeholder="Ej. MEE Platform"
+                                value={link.label}
+                                onChange={(event) => updateQuickLink(link.id, { label: event.target.value })}
+                              />
+                              <div className="relative">
+                                <ExternalLink className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                <Input
+                                  className="pl-9"
+                                  placeholder="https://plataforma.macmillan.es"
+                                  value={link.url}
+                                  onChange={(event) => updateQuickLink(link.id, { url: event.target.value })}
+                                />
+                              </div>
+                              <label className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                <Upload className="h-4 w-4" />
+                                <span>Subir icono</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="sr-only"
+                                  onChange={(event) => onShortcutIconSelected(link.id, event.target.files?.[0])}
+                                />
+                              </label>
+                            </div>
+                            <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-lg border bg-white">
+                                {link.icon ? (
+                                  link.icon.startsWith("data:") || link.icon.startsWith("http") ? (
+                                    <img src={link.icon} alt={link.label || "Icono"} className="h-6 w-6 object-contain" />
+                                  ) : (
+                                    <span className="text-lg">{link.icon}</span>
+                                  )
+                                ) : (
+                                  <LinkIcon className="h-5 w-5 text-slate-400" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-slate-900">{link.label || "Nombre del acceso"}</p>
+                                <p className="truncate text-xs text-slate-500">{link.url || "Sin URL configurada"}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                  />
+                  </div>
 
                   <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
