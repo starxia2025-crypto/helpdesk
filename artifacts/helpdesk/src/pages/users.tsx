@@ -67,6 +67,7 @@ export default function Users() {
               <SelectItem value="all">Todos los roles</SelectItem>
               {currentUser?.role === 'superadmin' && <SelectItem value="superadmin">Super Admin</SelectItem>}
               <SelectItem value="admin_cliente">Admin Cliente</SelectItem>
+              <SelectItem value="manager">Manager</SelectItem>
               {currentUser?.role === 'superadmin' && <SelectItem value="tecnico">Técnico</SelectItem>}
               <SelectItem value="usuario_cliente">Usuario</SelectItem>
               <SelectItem value="visor_cliente">Visor</SelectItem>

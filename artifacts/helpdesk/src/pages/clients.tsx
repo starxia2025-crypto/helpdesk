@@ -30,8 +30,8 @@ export default function Clients() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Clientes</h1>
-          <p className="text-slate-500 mt-1">Gestiona organizaciones y colegios clientes.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Clientes y redes escolares</h1>
+          <p className="text-slate-500 mt-1">Gestiona grupos educativos, colegios asociados y su operación de soporte.</p>
         </div>
         <Button className="gap-2 shrink-0">
           <Plus className="h-4 w-4" />

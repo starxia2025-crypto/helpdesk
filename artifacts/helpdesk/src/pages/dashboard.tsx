@@ -55,8 +55,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Panel de Control</h1>
-        <p className="text-slate-500 mt-1">Resumen general de tus operaciones de soporte.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Estadísticas de soporte</h1>
+        <p className="text-slate-500 mt-1">Visión agregada de incidencias, tiempos de resolución y carga operativa por cliente.</p>
       </div>
 
       {/* Tarjetas KPI */}

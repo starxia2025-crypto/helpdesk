@@ -42,6 +42,7 @@ export function RoleBadge({ role }: { role: string }) {
   const variants: Record<string, { bg: string, text: string, label: string }> = {
     superadmin: { bg: "bg-indigo-100 dark:bg-indigo-900/30", text: "text-indigo-700 dark:text-indigo-400", label: "Super Admin" },
     admin_cliente: { bg: "bg-violet-100 dark:bg-violet-900/30", text: "text-violet-700 dark:text-violet-400", label: "Admin Cliente" },
+    manager: { bg: "bg-cyan-100 dark:bg-cyan-900/30", text: "text-cyan-700 dark:text-cyan-400", label: "Manager" },
     tecnico: { bg: "bg-teal-100 dark:bg-teal-900/30", text: "text-teal-700 dark:text-teal-400", label: "Técnico" },
     usuario_cliente: { bg: "bg-sky-100 dark:bg-sky-900/30", text: "text-sky-700 dark:text-sky-400", label: "Usuario" },
     visor_cliente: { bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-600 dark:text-slate-400", label: "Visor" },

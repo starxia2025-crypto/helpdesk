@@ -144,9 +144,9 @@ export default function Tickets() {
                   <TableCell>
                     <div className="font-medium text-slate-900 dark:text-slate-100 mb-1 line-clamp-1">{ticket.title}</div>
                     <div className="text-xs text-slate-500 flex items-center gap-2">
-                      <span className="truncate max-w-[200px]">{ticket.category || 'General'}</span>
+                      <span className="truncate max-w-[200px]">{String(ticket.customFields?.school || ticket.category || 'General')}</span>
                       <span>•</span>
-                      <span>Asignado: {ticket.assignedToName || 'Sin asignar'}</span>
+                      <span>{String(ticket.customFields?.inquiryType || 'Consulta general')}</span>
                     </div>
                   </TableCell>
                   <TableCell>

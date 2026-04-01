@@ -10,12 +10,13 @@ import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Tickets from "@/pages/tickets";
 import TicketDetail from "@/pages/tickets/detail";
-import NewTicket from "@/pages/tickets/new";
+import NewTicket from "@/pages/tickets/new-education";
 import Portal from "@/pages/portal";
 import Clients from "@/pages/clients";
 import Users from "@/pages/users";
 import Audit from "@/pages/audit";
 import Settings from "@/pages/settings";
+import Admin from "@/pages/admin";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -64,7 +65,11 @@ function Router() {
       <Route path="/" component={Login} />
       
       <Route path="/dashboard">
-        {() => <ProtectedRoute component={Dashboard} />}
+        {() => <ProtectedRoute component={Dashboard} roles={['superadmin', 'admin_cliente', 'manager', 'tecnico']} />}
+      </Route>
+
+      <Route path="/admin">
+        {() => <ProtectedRoute component={Admin} roles={['superadmin', 'admin_cliente', 'tecnico']} />}
       </Route>
       
       <Route path="/tickets/new">
@@ -84,7 +89,7 @@ function Router() {
       </Route>
       
       <Route path="/clients">
-        {() => <ProtectedRoute component={Clients} roles={['superadmin']} />}
+        {() => <ProtectedRoute component={Clients} roles={['superadmin', 'admin_cliente', 'tecnico']} />}
       </Route>
       
       <Route path="/users">
@@ -92,7 +97,7 @@ function Router() {
       </Route>
       
       <Route path="/audit">
-        {() => <ProtectedRoute component={Audit} roles={['superadmin', 'admin_cliente']} />}
+        {() => <ProtectedRoute component={Audit} roles={['superadmin', 'admin_cliente', 'manager']} />}
       </Route>
       
       <Route path="/settings">

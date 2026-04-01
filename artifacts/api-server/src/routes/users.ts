@@ -8,7 +8,7 @@ import { createAuditLog } from "../lib/audit.js";
 
 const router = Router();
 
-const userRoles = ["superadmin", "admin_cliente", "tecnico", "usuario_cliente", "visor_cliente"] as const;
+const userRoles = ["superadmin", "admin_cliente", "manager", "tecnico", "usuario_cliente", "visor_cliente"] as const;
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -87,7 +87,7 @@ router.post("/", requireAuth, requireRole("superadmin", "admin_cliente"), async 
       res.status(403).json({ error: "Forbidden", message: "Cannot create users in another tenant" });
       return;
     }
-    if (!["usuario_cliente", "visor_cliente"].includes(parsed.data.role)) {
+    if (!["manager", "usuario_cliente", "visor_cliente"].includes(parsed.data.role)) {
       res.status(403).json({ error: "Forbidden", message: "Cannot create this role" });
       return;
     }

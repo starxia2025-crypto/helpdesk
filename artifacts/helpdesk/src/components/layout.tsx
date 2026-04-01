@@ -7,6 +7,7 @@ import {
   Users as UsersIcon, 
   Building2, 
   ActivitySquare, 
+  ShieldCheck,
   Settings, 
   LogOut,
   Menu,
@@ -38,10 +39,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   if (!user) return <>{children}</>;
 
   const navItems = [
-    { href: "/dashboard", label: "Panel", icon: LayoutDashboard, roles: ['superadmin', 'admin_cliente', 'tecnico', 'usuario_cliente', 'visor_cliente'] },
+    { href: "/dashboard", label: "Estadísticas", icon: LayoutDashboard, roles: ['superadmin', 'admin_cliente', 'manager', 'tecnico'] },
     { href: "/tickets", label: "Tickets", icon: Ticket, roles: ['superadmin', 'admin_cliente', 'tecnico', 'usuario_cliente'] },
-    { href: "/portal", label: "Portal", icon: BookOpen, roles: ['superadmin', 'admin_cliente', 'tecnico', 'usuario_cliente', 'visor_cliente'] },
-    { href: "/clients", label: "Clientes", icon: Building2, roles: ['superadmin'] },
+    { href: "/portal", label: "Portal", icon: BookOpen, roles: ['superadmin', 'admin_cliente', 'manager', 'tecnico', 'usuario_cliente', 'visor_cliente'] },
+    { href: "/admin", label: "Admin", icon: ShieldCheck, roles: ['superadmin', 'admin_cliente', 'tecnico'] },
+    { href: "/clients", label: "Clientes", icon: Building2, roles: ['superadmin', 'admin_cliente', 'tecnico'] },
     { href: "/users", label: "Usuarios", icon: UsersIcon, roles: ['superadmin', 'admin_cliente'] },
     { href: "/audit", label: "Auditoría", icon: ActivitySquare, roles: ['superadmin', 'admin_cliente'] },
   ].filter(item => item.roles.includes(user.role));
@@ -77,7 +79,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/dashboard">
             <span className="flex items-center gap-2 font-bold text-lg text-primary cursor-pointer tracking-tight">
               <LifeBuoy className="h-6 w-6" />
-              HelpDesk Pro
+              Soporte Macmillan
             </span>
           </Link>
         </div>
@@ -130,7 +132,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <div className="h-16 flex items-center px-6 border-b">
                   <span className="flex items-center gap-2 font-bold text-lg text-primary">
                     <LifeBuoy className="h-6 w-6" />
-                    HelpDesk Pro
+                    Soporte Macmillan
                   </span>
                 </div>
                 <div className="flex-1 py-6 px-4">
