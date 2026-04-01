@@ -174,6 +174,18 @@ router.patch("/:userId", requireAuth, requireRole("superadmin", "admin_cliente")
     return;
   }
 
+  if (authUser.role === "admin_cliente") {
+    if (parsed.data.tenantId !== undefined && parsed.data.tenantId !== authUser.tenantId) {
+      res.status(403).json({ error: "Forbidden", message: "Cannot move users to another tenant" });
+      return;
+    }
+
+    if (parsed.data.role && !["manager", "usuario_cliente", "visor_cliente"].includes(parsed.data.role)) {
+      res.status(403).json({ error: "Forbidden", message: "Cannot assign this role" });
+      return;
+    }
+  }
+
   const updated = await db
     .update(usersTable)
     .set({ ...parsed.data, updatedAt: new Date() })

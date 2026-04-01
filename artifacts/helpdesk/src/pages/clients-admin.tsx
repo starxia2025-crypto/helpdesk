@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useCreateTenant, useGetMe, useListTenants } from "@workspace/api-client-react";
+import { useCreateTenant, useGetMe, useListTenants, useUpdateTenant } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,18 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Search, Plus, Building2, Users, Ticket, Link as LinkIcon, Trash2, Upload, ExternalLink } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Search, Plus, Building2, Users, Ticket, Link as LinkIcon, Trash2, Upload, ExternalLink, Pencil, Power } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useForm } from "react-hook-form";
@@ -39,19 +50,33 @@ const textPalette = [
   { label: "Negro", value: "#111827" },
 ];
 
-const createTenantSchema = z.object({
+const tenantFormSchema = z.object({
   name: z.string().trim().min(2, "Indica el nombre del cliente"),
   contactEmail: z.union([z.literal(""), z.string().trim().email("Introduce un email valido")]).optional(),
   sidebarBackgroundColor: z.string().min(1, "Selecciona un color para el menu"),
   sidebarTextColor: z.string().min(1, "Selecciona un color de texto"),
 });
 
-type CreateTenantValues = z.infer<typeof createTenantSchema>;
+type TenantFormValues = z.infer<typeof tenantFormSchema>;
 type QuickLinkDraft = {
   id: string;
   label: string;
   url: string;
   icon: string;
+};
+type TenantRow = {
+  id: number;
+  name: string;
+  slug: string;
+  active: boolean;
+  totalUsers: number;
+  openTickets: number;
+  totalTickets: number;
+  createdAt: string;
+  contactEmail?: string | null;
+  sidebarBackgroundColor?: string | null;
+  sidebarTextColor?: string | null;
+  quickLinks?: Array<{ label: string; url: string; icon: string }> | null;
 };
 
 function slugifyTenantName(name: string) {
@@ -88,11 +113,23 @@ function inferQuickLinkLabel(url: string) {
   }
 }
 
+function mapQuickLinksToDrafts(quickLinks?: Array<{ label: string; url: string; icon: string }> | null): QuickLinkDraft[] {
+  if (!Array.isArray(quickLinks)) return [];
+
+  return quickLinks.map((link) => ({
+    id: crypto.randomUUID(),
+    label: link.label ?? "",
+    url: link.url ?? "",
+    icon: link.icon ?? "",
+  }));
+}
+
 export default function ClientsAdmin() {
   const { data: currentUser } = useGetMe();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<TenantRow | null>(null);
   const [quickLinks, setQuickLinks] = useState<QuickLinkDraft[]>([]);
 
   const { data: tenantsData, isLoading, refetch } = useListTenants({
@@ -101,13 +138,13 @@ export default function ClientsAdmin() {
     search: search || undefined,
   });
 
-  const canCreateTenant = useMemo(
+  const canManageTenants = useMemo(
     () => ["superadmin", "tecnico", "manager"].includes(currentUser?.role || ""),
     [currentUser?.role],
   );
 
-  const form = useForm<CreateTenantValues>({
-    resolver: zodResolver(createTenantSchema),
+  const form = useForm<TenantFormValues>({
+    resolver: zodResolver(tenantFormSchema),
     defaultValues: {
       name: "",
       contactEmail: "",
@@ -119,6 +156,34 @@ export default function ClientsAdmin() {
   const sidebarBackgroundColor = form.watch("sidebarBackgroundColor");
   const sidebarTextColor = form.watch("sidebarTextColor");
 
+  function resetTenantForm() {
+    setEditingTenant(null);
+    setQuickLinks([]);
+    form.reset({
+      name: "",
+      contactEmail: "",
+      sidebarBackgroundColor: "#0f172a",
+      sidebarTextColor: "#ffffff",
+    });
+  }
+
+  function openCreateDialog() {
+    resetTenantForm();
+    setOpen(true);
+  }
+
+  function openEditDialog(tenant: TenantRow) {
+    setEditingTenant(tenant);
+    setQuickLinks(mapQuickLinksToDrafts(tenant.quickLinks));
+    form.reset({
+      name: tenant.name,
+      contactEmail: tenant.contactEmail ?? "",
+      sidebarBackgroundColor: tenant.sidebarBackgroundColor || "#0f172a",
+      sidebarTextColor: tenant.sidebarTextColor || "#ffffff",
+    });
+    setOpen(true);
+  }
+
   const createTenant = useCreateTenant({
     mutation: {
       onSuccess: async () => {
@@ -127,13 +192,7 @@ export default function ClientsAdmin() {
           description: "El nuevo cliente ya esta disponible para configurarlo.",
         });
         setOpen(false);
-        form.reset({
-          name: "",
-          contactEmail: "",
-          sidebarBackgroundColor: "#0f172a",
-          sidebarTextColor: "#ffffff",
-        });
-        setQuickLinks([]);
+        resetTenantForm();
         await refetch();
       },
       onError: (error) => {
@@ -147,50 +206,92 @@ export default function ClientsAdmin() {
     },
   });
 
-  function onSubmit(values: CreateTenantValues) {
-    if (!canCreateTenant) {
+  const updateTenant = useUpdateTenant({
+    mutation: {
+      onSuccess: async (_, variables) => {
+        const action = variables.data.active === false ? "Cliente desactivado" : variables.data.active === true ? "Cliente reactivado" : "Cliente actualizado";
+        toast({
+          title: action,
+          description: variables.data.active === false
+            ? "El cliente ha quedado sin acceso operativo."
+            : variables.data.active === true
+              ? "El cliente vuelve a estar disponible para su equipo."
+              : "Los cambios del cliente ya estan guardados.",
+        });
+        setOpen(false);
+        resetTenantForm();
+        await refetch();
+      },
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : "No se pudo actualizar el cliente.";
+        toast({
+          title: "No se pudo actualizar el cliente",
+          description: message,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  function normalizeQuickLinks() {
+    return quickLinks
+      .filter((link) => link.label.trim() || link.url.trim() || link.icon.trim())
+      .map((link, index) => {
+        const url = link.url.trim();
+        const label = link.label.trim() || inferQuickLinkLabel(url);
+        const icon = link.icon.trim();
+
+        if (!url) {
+          throw new Error(`Completa la URL en el acceso directo ${index + 1}.`);
+        }
+
+        try {
+          new URL(url);
+        } catch {
+          throw new Error(`La URL del acceso directo ${index + 1} no es valida.`);
+        }
+
+        if (!label) {
+          throw new Error(`Completa el nombre del acceso directo ${index + 1}.`);
+        }
+
+        return { label, url, icon: icon || "LINK" };
+      });
+  }
+
+  function onSubmit(values: TenantFormValues) {
+    if (!canManageTenants) {
       toast({
         title: "Accion no permitida",
-        description: "Tu perfil no tiene permisos para crear clientes.",
+        description: "Tu perfil no tiene permisos para gestionar clientes.",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      const normalizedQuickLinks = quickLinks
-        .filter((link) => link.label.trim() || link.url.trim() || link.icon.trim())
-        .map((link, index) => {
-          const url = link.url.trim();
-          const label = link.label.trim() || inferQuickLinkLabel(url);
-          const icon = link.icon.trim();
+      const normalizedQuickLinks = normalizeQuickLinks();
+      const payload = {
+        name: values.name.trim(),
+        ...(values.contactEmail ? { contactEmail: values.contactEmail.trim().toLowerCase() } : { contactEmail: null }),
+        sidebarBackgroundColor: values.sidebarBackgroundColor,
+        sidebarTextColor: values.sidebarTextColor,
+        quickLinks: normalizedQuickLinks,
+      } as any;
 
-          if (!url) {
-            throw new Error(`Completa la URL en el acceso directo ${index + 1}.`);
-          }
-
-          try {
-            new URL(url);
-          } catch {
-            throw new Error(`La URL del acceso directo ${index + 1} no es valida.`);
-          }
-
-          if (!label) {
-            throw new Error(`Completa el nombre del acceso directo ${index + 1}.`);
-          }
-
-          return { label, url, icon: icon || "LINK" };
+      if (editingTenant) {
+        updateTenant.mutate({
+          tenantId: editingTenant.id,
+          data: payload,
         });
+        return;
+      }
 
       createTenant.mutate({
         data: {
-          name: values.name.trim(),
+          ...payload,
           slug: slugifyTenantName(values.name),
-          ...(values.contactEmail ? { contactEmail: values.contactEmail.trim().toLowerCase() } : {}),
-          sidebarBackgroundColor: values.sidebarBackgroundColor,
-          sidebarTextColor: values.sidebarTextColor,
-          quickLinks: normalizedQuickLinks,
-        } as any,
+        },
       });
     } catch (error) {
       toast({
@@ -241,6 +342,15 @@ export default function ClientsAdmin() {
     reader.readAsDataURL(file);
   }
 
+  function setTenantActive(tenant: TenantRow, active: boolean) {
+    updateTenant.mutate({
+      tenantId: tenant.id,
+      data: { active },
+    });
+  }
+
+  const isSaving = createTenant.isPending || updateTenant.isPending;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -248,181 +358,190 @@ export default function ClientsAdmin() {
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Clientes y redes escolares</h1>
           <p className="mt-1 text-slate-500">Gestiona grupos educativos, colegios asociados y su operacion de soporte.</p>
         </div>
-        {canCreateTenant && (
-          <Dialog open={open} onOpenChange={setOpen}>
+        {canManageTenants && (
+          <Dialog
+            open={open}
+            onOpenChange={(nextOpen) => {
+              setOpen(nextOpen);
+              if (!nextOpen) resetTenantForm();
+            }}
+          >
             <DialogTrigger asChild>
-              <Button className="shrink-0 gap-2">
+              <Button className="shrink-0 gap-2" onClick={openCreateDialog}>
                 <Plus className="h-4 w-4" />
                 Anadir cliente
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden p-0">
               <DialogHeader className="border-b px-6 pb-4 pt-6">
-                <DialogTitle>Alta y configuracion de cliente</DialogTitle>
-                <DialogDescription>Crea un nuevo grupo educativo, elige los colores del menu lateral y define accesos directos para su equipo.</DialogDescription>
+                <DialogTitle>{editingTenant ? "Editar cliente" : "Alta y configuracion de cliente"}</DialogTitle>
+                <DialogDescription>
+                  {editingTenant
+                    ? "Actualiza branding, correos y accesos directos del cliente."
+                    : "Crea un nuevo grupo educativo, elige los colores del menu lateral y define accesos directos para su equipo."}
+                </DialogDescription>
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="flex max-h-[calc(90vh-88px)] flex-col">
                   <div className="space-y-5 overflow-y-auto px-6 py-5">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nombre</FormLabel>
-                        <FormControl><Input placeholder="Ej. Grupo Escolar Norte" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="contactEmail"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email de contacto</FormLabel>
-                        <FormControl><Input placeholder="soporte@cliente.es" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className="grid gap-4 md:grid-cols-2">
                     <FormField
                       control={form.control}
-                      name="sidebarBackgroundColor"
+                      name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Fondo del menu lateral</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un color" /></SelectTrigger></FormControl>
-                            <SelectContent>
-                              {sidebarPalette.map((color) => (
-                                <SelectItem key={color.value} value={color.value}>{color.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <FormLabel>Nombre</FormLabel>
+                          <FormControl><Input placeholder="Ej. Grupo Escolar Norte" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
                     <FormField
                       control={form.control}
-                      name="sidebarTextColor"
+                      name="contactEmail"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Color del texto del menu</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un color" /></SelectTrigger></FormControl>
-                            <SelectContent>
-                              {textPalette.map((color) => (
-                                <SelectItem key={color.value} value={color.value}>{color.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <FormLabel>Email de contacto</FormLabel>
+                          <FormControl><Input placeholder="soporte@cliente.es" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </div>
 
-                  <div className="rounded-2xl border p-4">
-                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                      <LinkIcon className="h-4 w-4" />
-                      Vista previa del menu lateral
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField
+                        control={form.control}
+                        name="sidebarBackgroundColor"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Fondo del menu lateral</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un color" /></SelectTrigger></FormControl>
+                              <SelectContent>
+                                {sidebarPalette.map((color) => (
+                                  <SelectItem key={color.value} value={color.value}>{color.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="sidebarTextColor"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Color del texto del menu</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl><SelectTrigger><SelectValue placeholder="Selecciona un color" /></SelectTrigger></FormControl>
+                              <SelectContent>
+                                {textPalette.map((color) => (
+                                  <SelectItem key={color.value} value={color.value}>{color.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
-                    <div className="rounded-xl p-3" style={{ backgroundColor: sidebarBackgroundColor, color: sidebarTextColor }}>
-                      <div className="mb-2 text-sm font-semibold opacity-80">Centro de ayuda</div>
-                      <div className="space-y-2 text-sm">
-                        <div className="rounded-md px-3 py-2" style={{ backgroundColor: `${sidebarTextColor}22` }}>Tickets de consulta</div>
-                        <div className="rounded-md px-3 py-2">Miembros del equipo</div>
-                        <div className="mt-3 border-t border-white/20 pt-3 text-base font-bold">{form.watch("name") || "Nombre del cliente"}</div>
+
+                    <div className="rounded-2xl border p-4">
+                      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <LinkIcon className="h-4 w-4" />
+                        Vista previa del menu lateral
+                      </div>
+                      <div className="rounded-xl p-3" style={{ backgroundColor: sidebarBackgroundColor, color: sidebarTextColor }}>
+                        <div className="mb-2 text-sm font-semibold opacity-80">Centro de ayuda</div>
+                        <div className="space-y-2 text-sm">
+                          <div className="rounded-md px-3 py-2" style={{ backgroundColor: `${sidebarTextColor}22` }}>Tickets de consulta</div>
+                          <div className="rounded-md px-3 py-2">Miembros del equipo</div>
+                          <div className="mt-3 border-t border-white/20 pt-3 text-base font-bold">{form.watch("name") || "Nombre del cliente"}</div>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-3 rounded-2xl border p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Accesos directos</p>
-                        <p className="text-xs text-slate-500">Anade enlaces a plataformas del cliente con su icono y URL.</p>
+                    <div className="space-y-3 rounded-2xl border p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Accesos directos</p>
+                          <p className="text-xs text-slate-500">Anade enlaces a plataformas del cliente con su icono y URL.</p>
+                        </div>
+                        <Button type="button" variant="outline" className="gap-2" onClick={addQuickLink}>
+                          <Plus className="h-4 w-4" />
+                          Anadir acceso
+                        </Button>
                       </div>
-                      <Button type="button" variant="outline" className="gap-2" onClick={addQuickLink}>
-                        <Plus className="h-4 w-4" />
-                        Anadir acceso
-                      </Button>
-                    </div>
 
-                    {quickLinks.length === 0 ? (
-                      <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-slate-500">
-                        Todavia no hay accesos directos. Pulsa en "Anadir acceso" para crear uno.
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {quickLinks.map((link, index) => (
-                          <div key={link.id} className="rounded-xl border p-4">
-                            <div className="mb-4 flex items-center justify-between gap-3">
-                              <p className="text-sm font-semibold text-slate-900">Acceso directo {index + 1}</p>
-                              <Button type="button" variant="ghost" size="icon" onClick={() => removeQuickLink(link.id)}>
-                                <Trash2 className="h-4 w-4 text-slate-500" />
-                              </Button>
-                            </div>
-                            <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr_auto]">
-                              <Input
-                                placeholder="Ej. MEE Platform (o dejalo vacio y se generara desde la URL)"
-                                value={link.label}
-                                onChange={(event) => updateQuickLink(link.id, { label: event.target.value })}
-                              />
-                              <div className="relative">
-                                <ExternalLink className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      {quickLinks.length === 0 ? (
+                        <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-slate-500">
+                          Todavia no hay accesos directos. Pulsa en "Anadir acceso" para crear uno.
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {quickLinks.map((link, index) => (
+                            <div key={link.id} className="rounded-xl border p-4">
+                              <div className="mb-4 flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-slate-900">Acceso directo {index + 1}</p>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => removeQuickLink(link.id)}>
+                                  <Trash2 className="h-4 w-4 text-slate-500" />
+                                </Button>
+                              </div>
+                              <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr_auto]">
                                 <Input
-                                  className="pl-9"
-                                  placeholder="https://plataforma.macmillan.es"
-                                  value={link.url}
-                                  onChange={(event) => updateQuickLink(link.id, { url: event.target.value })}
+                                  placeholder="Ej. MEE Platform (o dejalo vacio y se generara desde la URL)"
+                                  value={link.label}
+                                  onChange={(event) => updateQuickLink(link.id, { label: event.target.value })}
                                 />
+                                <div className="relative">
+                                  <ExternalLink className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                  <Input
+                                    className="pl-9"
+                                    placeholder="https://plataforma.macmillan.es"
+                                    value={link.url}
+                                    onChange={(event) => updateQuickLink(link.id, { url: event.target.value })}
+                                  />
+                                </div>
+                                <label className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                  <Upload className="h-4 w-4" />
+                                  <span>Subir icono</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="sr-only"
+                                    onChange={(event) => onShortcutIconSelected(link.id, event.target.files?.[0])}
+                                  />
+                                </label>
                               </div>
-                              <label className="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                <Upload className="h-4 w-4" />
-                                <span>Subir icono</span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="sr-only"
-                                  onChange={(event) => onShortcutIconSelected(link.id, event.target.files?.[0])}
-                                />
-                              </label>
-                            </div>
-                            <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg border bg-white">
-                                {link.icon ? (
-                                  link.icon.startsWith("data:") || link.icon.startsWith("http") ? (
-                                    <img src={link.icon} alt={link.label || "Icono"} className="h-6 w-6 object-contain" />
+                              <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg border bg-white">
+                                  {link.icon ? (
+                                    link.icon.startsWith("data:") || link.icon.startsWith("http") ? (
+                                      <img src={link.icon} alt={link.label || "Icono"} className="h-6 w-6 object-contain" />
+                                    ) : (
+                                      <span className="text-xs font-semibold text-slate-500">{link.icon}</span>
+                                    )
                                   ) : (
-                                    <span className="text-lg">{link.icon}</span>
-                                  )
-                                ) : (
-                                  <LinkIcon className="h-5 w-5 text-slate-400" />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-slate-900">{link.label || "Nombre del acceso"}</p>
-                                <p className="truncate text-xs text-slate-500">{link.url || "Sin URL configurada"}</p>
+                                    <LinkIcon className="h-5 w-5 text-slate-400" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-slate-900">{link.label || "Nombre del acceso"}</p>
+                                  <p className="truncate text-xs text-slate-500">{link.url || "Sin URL configurada"}</p>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <DialogFooter className="border-t bg-white px-6 py-4">
                     <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-                    <Button type="submit" disabled={createTenant.isPending}>
-                      {createTenant.isPending ? "Creando..." : "Crear cliente"}
+                    <Button type="submit" disabled={isSaving}>
+                      {isSaving ? "Guardando..." : editingTenant ? "Guardar cambios" : "Crear cliente"}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -457,6 +576,7 @@ export default function ClientsAdmin() {
               <TableHead className="text-center font-semibold">Tickets Abiertos</TableHead>
               <TableHead className="text-center font-semibold">Total Tickets</TableHead>
               <TableHead className="text-right font-semibold">Creado</TableHead>
+              <TableHead className="text-right font-semibold">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -469,11 +589,12 @@ export default function ClientsAdmin() {
                   <TableCell><div className="mx-auto h-5 w-10 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></TableCell>
                   <TableCell><div className="mx-auto h-5 w-10 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></TableCell>
                   <TableCell><div className="ml-auto h-5 w-24 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></TableCell>
+                  <TableCell><div className="ml-auto h-8 w-28 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></TableCell>
                 </TableRow>
               ))
             ) : tenantsData?.data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-48 text-center text-slate-500">
+                <TableCell colSpan={7} className="h-48 text-center text-slate-500">
                   No se encontraron clientes.
                 </TableCell>
               </TableRow>
@@ -511,6 +632,38 @@ export default function ClientsAdmin() {
                   <TableCell className="text-center text-slate-500">{tenant.totalTickets}</TableCell>
                   <TableCell className="text-right text-sm text-slate-500">
                     {format(new Date(tenant.createdAt), "d MMM yyyy", { locale: es })}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => openEditDialog(tenant as TenantRow)}>
+                        <Pencil className="h-4 w-4" />
+                        Editar
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button type="button" variant="outline" size="sm" className="gap-2">
+                            <Power className="h-4 w-4" />
+                            {tenant.active ? "Eliminar" : "Reactivar"}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>{tenant.active ? "Desactivar cliente" : "Reactivar cliente"}</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {tenant.active
+                                ? "Se desactivara el acceso del cliente y quedara fuera de operacion hasta reactivarlo."
+                                : "El cliente volvera a estar operativo y visible para su equipo."}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => setTenantActive(tenant as TenantRow, !tenant.active)}>
+                              {tenant.active ? "Desactivar" : "Reactivar"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

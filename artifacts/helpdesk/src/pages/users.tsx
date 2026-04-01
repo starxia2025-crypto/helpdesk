@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useCreateUser, useGetMe, useListTenants, useListUsers } from "@workspace/api-client-react";
+import { useCreateUser, useGetMe, useListTenants, useListUsers, useUpdateUser } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -22,8 +22,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Search, Plus, Filter } from "lucide-react";
+import { Search, Plus, Filter, Pencil, Power } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { RoleBadge } from "@/components/badges";
@@ -41,14 +52,34 @@ const createUserSchema = z.object({
   password: z.string().min(8, "La contrasena debe tener al menos 8 caracteres"),
 });
 
+const editUserSchema = z.object({
+  name: z.string().min(2, "Indica el nombre del usuario"),
+  role: z.string().min(1, "Selecciona un rol"),
+  tenantId: z.coerce.number().optional(),
+  active: z.boolean(),
+});
+
 type CreateUserValues = z.infer<typeof createUserSchema>;
+type EditUserValues = z.infer<typeof editUserSchema>;
+type UserRow = {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+  tenantId?: number | null;
+  tenantName?: string | null;
+  active: boolean;
+  lastLoginAt?: string | null;
+};
 
 export default function Users() {
   const { data: currentUser } = useGetMe();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
-  const [open, setOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
 
   const { data: usersData, isLoading, refetch } = useListUsers({
     page,
@@ -78,7 +109,7 @@ export default function Users() {
     return ["admin_cliente", "manager", "usuario_cliente", "visor_cliente"];
   }, [currentUser?.role]);
 
-  const form = useForm<CreateUserValues>({
+  const createForm = useForm<CreateUserValues>({
     resolver: zodResolver(createUserSchema.superRefine((values, ctx) => {
       if (currentUser?.role === "superadmin" && !values.tenantId && values.role !== "superadmin" && values.role !== "tecnico") {
         ctx.addIssue({
@@ -97,7 +128,47 @@ export default function Users() {
     },
   });
 
-  const selectedRole = form.watch("role");
+  const editForm = useForm<EditUserValues>({
+    resolver: zodResolver(editUserSchema.superRefine((values, ctx) => {
+      if (currentUser?.role === "superadmin" && !values.tenantId && values.role !== "superadmin" && values.role !== "tecnico") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["tenantId"],
+          message: "Selecciona el cliente del usuario",
+        });
+      }
+    })),
+    defaultValues: {
+      name: "",
+      role: currentUser?.role === "superadmin" ? "admin_cliente" : "manager",
+      tenantId: currentUser?.tenantId ?? undefined,
+      active: true,
+    },
+  });
+
+  const selectedCreateRole = createForm.watch("role");
+  const selectedEditRole = editForm.watch("role");
+
+  function resetCreateForm() {
+    createForm.reset({
+      name: "",
+      email: "",
+      role: currentUser?.role === "superadmin" ? "admin_cliente" : "manager",
+      tenantId: currentUser?.tenantId ?? undefined,
+      password: "",
+    });
+  }
+
+  function openEditDialog(user: UserRow) {
+    setEditingUser(user);
+    editForm.reset({
+      name: user.name,
+      role: user.role,
+      tenantId: user.tenantId ?? undefined,
+      active: user.active,
+    });
+    setEditOpen(true);
+  }
 
   const createUser = useCreateUser({
     mutation: {
@@ -106,14 +177,8 @@ export default function Users() {
           title: "Usuario creado",
           description: "El nuevo acceso ya esta disponible en el sistema.",
         });
-        setOpen(false);
-        form.reset({
-          name: "",
-          email: "",
-          role: currentUser?.role === "superadmin" ? "admin_cliente" : "manager",
-          tenantId: currentUser?.tenantId ?? undefined,
-          password: "",
-        });
+        setCreateOpen(false);
+        resetCreateForm();
         await refetch();
       },
       onError: (error) => {
@@ -128,7 +193,34 @@ export default function Users() {
     },
   });
 
-  function onSubmit(values: CreateUserValues) {
+  const updateUser = useUpdateUser({
+    mutation: {
+      onSuccess: async (_, variables) => {
+        const title = variables.data.active === false ? "Usuario desactivado" : variables.data.active === true && Object.keys(variables.data).length === 1 ? "Usuario reactivado" : "Usuario actualizado";
+        toast({
+          title,
+          description: variables.data.active === false
+            ? "El usuario ya no podra acceder al sistema."
+            : variables.data.active === true && Object.keys(variables.data).length === 1
+              ? "El usuario vuelve a tener acceso al sistema."
+              : "Los cambios del usuario ya estan guardados.",
+        });
+        setEditOpen(false);
+        setEditingUser(null);
+        await refetch();
+      },
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : "No se pudo actualizar el usuario.";
+        toast({
+          title: "No se pudo actualizar el usuario",
+          description: message,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  function onCreateSubmit(values: CreateUserValues) {
     const tenantId =
       currentUser?.role === "superadmin"
         ? values.role === "superadmin" || values.role === "tecnico"
@@ -147,26 +239,48 @@ export default function Users() {
     });
   }
 
+  function onEditSubmit(values: EditUserValues) {
+    if (!editingUser) return;
+
+    const tenantId =
+      currentUser?.role === "superadmin"
+        ? values.role === "superadmin" || values.role === "tecnico"
+          ? null
+          : (values.tenantId ?? null)
+        : (currentUser?.tenantId ?? null);
+
+    updateUser.mutate({
+      userId: editingUser.id,
+      data: {
+        name: values.name,
+        role: values.role as never,
+        tenantId,
+        active: values.active,
+      },
+    });
+  }
+
+  function toggleUserActive(user: UserRow) {
+    updateUser.mutate({
+      userId: user.id,
+      data: { active: !user.active },
+    });
+  }
+
+  const isSavingUser = createUser.isPending || updateUser.isPending;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Usuarios</h1>
-          <p className="mt-1 text-slate-500">Gestiona accesos y roles del sistema.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Miembros del equipo</h1>
+          <p className="mt-1 text-slate-500">Gestiona accesos, roles y estado de los miembros del sistema.</p>
         </div>
         <Dialog
-          open={open}
+          open={createOpen}
           onOpenChange={(nextOpen) => {
-            setOpen(nextOpen);
-            if (!nextOpen) {
-              form.reset({
-                name: "",
-                email: "",
-                role: currentUser?.role === "superadmin" ? "admin_cliente" : "manager",
-                tenantId: currentUser?.tenantId ?? undefined,
-                password: "",
-              });
-            }
+            setCreateOpen(nextOpen);
+            if (!nextOpen) resetCreateForm();
           }}
         >
           <DialogTrigger asChild>
@@ -182,11 +296,11 @@ export default function Users() {
                 Da de alta accesos para coordinacion, jefatura de estudio, profesorado o equipo tecnico.
               </DialogDescription>
             </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <Form {...createForm}>
+              <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="name"
                     render={({ field }) => (
                       <FormItem>
@@ -199,7 +313,7 @@ export default function Users() {
                     )}
                   />
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="email"
                     render={({ field }) => (
                       <FormItem>
@@ -215,7 +329,7 @@ export default function Users() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <FormField
-                    control={form.control}
+                    control={createForm.control}
                     name="role"
                     render={({ field }) => (
                       <FormItem>
@@ -241,13 +355,13 @@ export default function Users() {
 
                   {currentUser?.role === "superadmin" ? (
                     <FormField
-                      control={form.control}
+                      control={createForm.control}
                       name="tenantId"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Cliente</FormLabel>
                           <Select
-                            disabled={selectedRole === "superadmin" || selectedRole === "tecnico"}
+                            disabled={selectedCreateRole === "superadmin" || selectedCreateRole === "tecnico"}
                             onValueChange={(value) => field.onChange(Number(value))}
                             value={field.value ? String(field.value) : undefined}
                           >
@@ -255,7 +369,7 @@ export default function Users() {
                               <SelectTrigger>
                                 <SelectValue
                                   placeholder={
-                                    selectedRole === "superadmin" || selectedRole === "tecnico"
+                                    selectedCreateRole === "superadmin" || selectedCreateRole === "tecnico"
                                       ? "No requiere cliente"
                                       : "Selecciona un cliente"
                                   }
@@ -282,7 +396,7 @@ export default function Users() {
                 </div>
 
                 <FormField
-                  control={form.control}
+                  control={createForm.control}
                   name="password"
                   render={({ field }) => (
                     <FormItem>
@@ -296,7 +410,7 @@ export default function Users() {
                 />
 
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
                     Cancelar
                   </Button>
                   <Button type="submit" disabled={createUser.isPending}>
@@ -308,6 +422,145 @@ export default function Users() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Dialog
+        open={editOpen}
+        onOpenChange={(nextOpen) => {
+          setEditOpen(nextOpen);
+          if (!nextOpen) setEditingUser(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar usuario</DialogTitle>
+            <DialogDescription>
+              Ajusta el rol, el cliente asociado y el estado de acceso del miembro del equipo.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre completo</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej. Ana Lopez" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {editingUser && (
+                <div className="rounded-lg border bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  Correo asociado: <span className="font-medium text-slate-900">{editingUser.email}</span>
+                </div>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={editForm.control}
+                  name="role"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Rol</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona un rol" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {availableRoles.map((role) => (
+                            <SelectItem key={role} value={role}>
+                              {getRoleLabel(role)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {currentUser?.role === "superadmin" ? (
+                  <FormField
+                    control={editForm.control}
+                    name="tenantId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cliente</FormLabel>
+                        <Select
+                          disabled={selectedEditRole === "superadmin" || selectedEditRole === "tecnico"}
+                          onValueChange={(value) => field.onChange(Number(value))}
+                          value={field.value ? String(field.value) : undefined}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  selectedEditRole === "superadmin" || selectedEditRole === "tecnico"
+                                    ? "No requiere cliente"
+                                    : "Selecciona un cliente"
+                                }
+                              />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {tenantsData?.data.map((tenant) => (
+                              <SelectItem key={tenant.id} value={String(tenant.id)}>
+                                {tenant.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <div className="rounded-lg border bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Este usuario pertenece a tu cliente actual.
+                  </div>
+                )}
+              </div>
+
+              <FormField
+                control={editForm.control}
+                name="active"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado</FormLabel>
+                    <Select onValueChange={(value) => field.onChange(value === "true")} value={String(field.value)}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un estado" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="true">Activo</SelectItem>
+                        <SelectItem value="false">Inactivo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={updateUser.isPending}>
+                  {updateUser.isPending ? "Guardando..." : "Guardar cambios"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       <Card className="flex flex-col gap-4 p-4 sm:flex-row">
         <div className="relative flex-1">
@@ -358,6 +611,7 @@ export default function Users() {
               {currentUser?.role === "superadmin" && <TableHead className="font-semibold">Cliente</TableHead>}
               <TableHead className="font-semibold">Estado</TableHead>
               <TableHead className="text-right font-semibold">Ultimo acceso</TableHead>
+              <TableHead className="text-right font-semibold">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -377,11 +631,12 @@ export default function Users() {
                   {currentUser?.role === "superadmin" && <TableCell><div className="h-5 w-32 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></TableCell>}
                   <TableCell><div className="h-6 w-16 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" /></TableCell>
                   <TableCell><div className="ml-auto h-5 w-24 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></TableCell>
+                  <TableCell><div className="ml-auto h-8 w-28 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></TableCell>
                 </TableRow>
               ))
             ) : usersData?.data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={currentUser?.role === "superadmin" ? 5 : 4} className="h-48 text-center text-slate-500">
+                <TableCell colSpan={currentUser?.role === "superadmin" ? 6 : 5} className="h-48 text-center text-slate-500">
                   No se encontraron usuarios.
                 </TableCell>
               </TableRow>
@@ -421,6 +676,38 @@ export default function Users() {
                   </TableCell>
                   <TableCell className="text-right text-sm text-slate-500">
                     {user.lastLoginAt ? format(new Date(user.lastLoginAt), "d MMM yyyy", { locale: es }) : "Nunca"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => openEditDialog(user as UserRow)}>
+                        <Pencil className="h-4 w-4" />
+                        Editar
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button type="button" variant="outline" size="sm" className="gap-2">
+                            <Power className="h-4 w-4" />
+                            {user.active ? "Eliminar" : "Reactivar"}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>{user.active ? "Desactivar acceso" : "Reactivar acceso"}</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {user.active
+                                ? "El usuario dejara de poder entrar al sistema, pero se conservara su historial."
+                                : "El usuario recuperara acceso al sistema con su mismo historial."}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => toggleUserActive(user as UserRow)}>
+                              {user.active ? "Desactivar" : "Reactivar"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
