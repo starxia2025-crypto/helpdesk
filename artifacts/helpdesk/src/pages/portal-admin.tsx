@@ -13,6 +13,7 @@ import { z } from "zod";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
+import { buildApiUrl } from "@/lib/api-base-url";
 
 const typeLabels: Record<string, string> = {
   video: "Video",
@@ -37,13 +38,21 @@ const createDocumentSchema = z.object({
 
 type CreateDocumentValues = z.infer<typeof createDocumentSchema>;
 
+type UploadedFileResult = {
+  fileName: string;
+  storedFileName: string;
+  size: number;
+  mimeType: string;
+  url: string;
+  tenantId: number;
+};
+
 export default function PortalAdmin() {
   const { data: user } = useGetMe();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [open, setOpen] = useState(false);
-  const [selectedFileName, setSelectedFileName] = useState<string>("");
-  const [selectedFileDataUrl, setSelectedFileDataUrl] = useState<string>("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const { data: docsData, isLoading, refetch } = useListDocuments({
     tenantId: user?.role === "superadmin" ? undefined : user?.tenantId,
@@ -80,8 +89,7 @@ export default function PortalAdmin() {
           description: "El recurso ya esta disponible en el portal.",
         });
         setOpen(false);
-        setSelectedFileName("");
-        setSelectedFileDataUrl("");
+        setSelectedFile(null);
         form.reset({
           title: "",
           description: "",
@@ -113,8 +121,7 @@ export default function PortalAdmin() {
   );
 
   function resetComposer() {
-    setSelectedFileName("");
-    setSelectedFileDataUrl("");
+    setSelectedFile(null);
     form.reset({
       title: "",
       description: "",
@@ -129,59 +136,87 @@ export default function PortalAdmin() {
   }
 
   function handleFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const file = event.target.files?.[0] ?? null;
+    setSelectedFile(file);
+
     if (!file) {
-      setSelectedFileName("");
-      setSelectedFileDataUrl("");
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
       toast({
         title: "Archivo demasiado grande",
-        description: "Sube archivos de hasta 5 MB para el portal.",
+        description: "Sube archivos de hasta 10 MB para el portal.",
         variant: "destructive",
       });
+      setSelectedFile(null);
       event.target.value = "";
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
-      setSelectedFileDataUrl(result);
-      setSelectedFileName(file.name);
-      if (!form.getValues("title")) {
-        form.setValue("title", file.name.replace(/\.[^.]+$/, ""), { shouldValidate: true });
-      }
-      if (!form.getValues("description")) {
-        form.setValue("description", `Archivo adjunto: ${file.name}`);
-      }
-      form.setValue("type", "manual");
-    };
-    reader.readAsDataURL(file);
+    if (!form.getValues("title")) {
+      form.setValue("title", file.name.replace(/\.[^.]+$/, ""), { shouldValidate: true });
+    }
+    if (!form.getValues("description")) {
+      form.setValue("description", `Archivo adjunto: ${file.name}`);
+    }
+    form.setValue("type", "manual");
   }
 
-  function onSubmit(values: CreateDocumentValues) {
-    const resolvedUrl = selectedFileDataUrl || values.url || null;
-    const resolvedContent = selectedFileName
-      ? [values.content?.trim(), `Archivo adjunto: ${selectedFileName}`].filter(Boolean).join("\n\n")
-      : (values.content || null);
+  async function uploadSelectedFile(tenantId: number): Promise<UploadedFileResult | null> {
+    if (!selectedFile) return null;
 
-    createDocument.mutate({
-      data: {
-        title: values.title,
-        description: values.description || (selectedFileName ? `Descarga disponible: ${selectedFileName}` : null),
-        type: values.type as CreateDocumentRequestType,
-        category: values.category || null,
-        url: resolvedUrl,
-        content: resolvedContent,
-        tenantId: user?.role === "superadmin" || user?.role === "tecnico" ? values.tenantId! : (user?.tenantId as number),
-        tags: values.tags ? values.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : [],
-        visibleToRoles: ["usuario_cliente", "visor_cliente", "manager", "tecnico", "admin_cliente", "superadmin"],
-        published: values.published,
-      },
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("tenantId", String(tenantId));
+
+    const response = await fetch(buildApiUrl("/api/documents/upload"), {
+      method: "POST",
+      body: formData,
+      credentials: "include",
     });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const message = payload?.message || `No se pudo subir el archivo (${response.status}).`;
+      throw new Error(message);
+    }
+
+    return payload as UploadedFileResult;
+  }
+
+  async function onSubmit(values: CreateDocumentValues) {
+    const tenantId = user?.role === "superadmin" || user?.role === "tecnico" ? values.tenantId! : (user?.tenantId as number);
+
+    try {
+      const uploadedFile = await uploadSelectedFile(tenantId);
+      const resolvedUrl = uploadedFile?.url || values.url || null;
+      const resolvedContent = uploadedFile
+        ? [values.content?.trim(), `Archivo adjunto: ${uploadedFile.fileName}`].filter(Boolean).join("\n\n")
+        : (values.content || null);
+
+      createDocument.mutate({
+        data: {
+          title: values.title,
+          description: values.description || (uploadedFile ? `Descarga disponible: ${uploadedFile.fileName}` : null),
+          type: values.type as CreateDocumentRequestType,
+          category: values.category || null,
+          url: resolvedUrl,
+          content: resolvedContent,
+          tenantId,
+          tags: values.tags ? values.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : [],
+          visibleToRoles: ["usuario_cliente", "visor_cliente", "manager", "tecnico", "admin_cliente", "superadmin"],
+          published: values.published,
+        },
+      });
+    } catch (error) {
+      toast({
+        title: "No se pudo subir el archivo",
+        description: error instanceof Error ? error.message : "Revisa el archivo e intentalo de nuevo.",
+        variant: "destructive",
+      });
+    }
   }
 
   const getIcon = (type: string) => {
@@ -304,10 +339,10 @@ export default function PortalAdmin() {
                         Subir archivo desde tu equipo
                       </div>
                       <Input type="file" onChange={handleFileSelection} />
-                      <p className="mt-2 text-xs text-slate-500">Puedes adjuntar PDF, Word, Excel, imagenes u otros recursos de hasta 5 MB.</p>
-                      {selectedFileName && (
+                      <p className="mt-2 text-xs text-slate-500">Puedes adjuntar PDF, Word, Excel, imagenes u otros recursos de hasta 10 MB.</p>
+                      {selectedFile && (
                         <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                          Archivo seleccionado: {selectedFileName}
+                          Archivo seleccionado: {selectedFile.name}
                         </div>
                       )}
                     </div>
@@ -364,7 +399,7 @@ export default function PortalAdmin() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               {docsData.data.map((doc) => {
-                const isDownloadableFile = doc.url?.startsWith("data:");
+                const isDownloadableFile = !!doc.url?.includes("/uploads/documents/");
                 return (
                   <a
                     key={doc.id}

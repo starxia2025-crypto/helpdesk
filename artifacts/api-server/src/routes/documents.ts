@@ -1,4 +1,7 @@
 import { Router } from "express";
+import path from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { Readable } from "node:stream";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { documentsTable, tenantsTable, usersTable } from "@workspace/db/schema";
@@ -7,6 +10,8 @@ import { requireAuth, requireRole } from "../lib/auth.js";
 import { createAuditLog } from "../lib/audit.js";
 
 const router = Router();
+const storageRoot = path.resolve(process.env["DOCUMENTS_STORAGE_ROOT"] || "/app/storage");
+const documentsStoragePath = path.join(storageRoot, "documents");
 
 const documentTypes = ["manual", "tutorial", "video", "faq", "link", "other"] as const;
 
@@ -33,6 +38,67 @@ const updateDocumentSchema = z.object({
   tags: z.array(z.string()).optional(),
   visibleToRoles: z.array(z.string()).optional(),
   published: z.boolean().optional(),
+});
+
+router.post("/upload", requireAuth, requireRole("superadmin", "admin_cliente", "tecnico", "manager"), async (req, res) => {
+  const authUser = (req as any).user;
+
+  try {
+    const request = new Request("http://local/upload", {
+      method: req.method,
+      headers: req.headers as Record<string, string>,
+      body: Readable.toWeb(req) as BodyInit,
+      duplex: "half",
+    });
+
+    const formData = await request.formData();
+    const file = formData.get("file");
+    const rawTenantId = formData.get("tenantId");
+    const tenantId = rawTenantId ? Number(rawTenantId) : authUser.tenantId;
+
+    if (!(file instanceof File)) {
+      res.status(400).json({ error: "ValidationError", message: "No se recibio ningun archivo." });
+      return;
+    }
+
+    if (!tenantId || Number.isNaN(tenantId)) {
+      res.status(400).json({ error: "ValidationError", message: "Falta el cliente de destino." });
+      return;
+    }
+
+    if ((authUser.role === "admin_cliente" || authUser.role === "manager") && tenantId !== authUser.tenantId) {
+      res.status(403).json({ error: "Forbidden", message: "No puedes subir archivos para otro cliente." });
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      res.status(413).json({ error: "PayloadTooLarge", message: "El archivo supera el limite de 10 MB." });
+      return;
+    }
+
+    await mkdir(documentsStoragePath, { recursive: true });
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const finalName = `${Date.now()}-${safeName}`;
+    const filePath = path.join(documentsStoragePath, finalName);
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+
+    await writeFile(filePath, fileBuffer);
+
+    const publicUrl = `${req.protocol}://${req.get("host")}/uploads/documents/${finalName}`;
+
+    res.status(201).json({
+      fileName: file.name,
+      storedFileName: finalName,
+      size: file.size,
+      mimeType: file.type || "application/octet-stream",
+      url: publicUrl,
+      tenantId,
+    });
+  } catch (error) {
+    console.error("Document upload failed", error);
+    res.status(500).json({ error: "InternalServerError", message: "No se pudo subir el archivo." });
+  }
 });
 
 router.get("/", requireAuth, async (req, res) => {
