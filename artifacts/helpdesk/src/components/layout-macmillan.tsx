@@ -38,11 +38,11 @@ export function MacmillanLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: "/dashboard", label: "Estadisticas", icon: LayoutDashboard, roles: ["superadmin", "admin_cliente", "manager", "tecnico"] },
-    { href: "/tickets", label: "Tickets", icon: Ticket, roles: ["superadmin", "admin_cliente", "tecnico", "usuario_cliente"] },
-    { href: "/portal", label: "Portal", icon: BookOpen, roles: ["superadmin", "admin_cliente", "manager", "tecnico", "usuario_cliente", "visor_cliente"] },
+    { href: "/tickets", label: "Tickets de consulta", icon: Ticket, roles: ["superadmin", "admin_cliente", "tecnico", "usuario_cliente"] },
+    { href: "/portal", label: "Centro de ayuda", icon: BookOpen, roles: ["superadmin", "admin_cliente", "manager", "tecnico", "usuario_cliente", "visor_cliente"] },
     { href: "/admin", label: "Admin", icon: ShieldCheck, roles: ["superadmin", "tecnico", "manager"] },
     { href: "/clients", label: "Clientes", icon: Building2, roles: ["superadmin"] },
-    { href: "/users", label: "Usuarios", icon: UsersIcon, roles: ["superadmin", "admin_cliente"] },
+    { href: "/users", label: "Miembros del equipo", icon: UsersIcon, roles: ["superadmin", "admin_cliente"] },
     { href: "/audit", label: "Auditoria", icon: ActivitySquare, roles: ["superadmin"] },
   ].filter((item) => item.roles.includes(user.role));
 
