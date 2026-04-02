@@ -93,26 +93,36 @@ router.post("/", requireAuth, requireRole("superadmin", "admin_cliente", "tecnic
     }
   }
 
-  const passwordHash = await hashPassword(parsed.data.password);
-  const user = await db.insert(usersTable).values({
-    email: parsed.data.email.toLowerCase(),
-    name: parsed.data.name,
-    role: parsed.data.role,
-    tenantId: parsed.data.tenantId ?? null,
-    passwordHash,
-  }).returning();
+  try {
+    const passwordHash = await hashPassword(parsed.data.password);
+    const user = await db.insert(usersTable).values({
+      email: parsed.data.email.toLowerCase(),
+      name: parsed.data.name,
+      role: parsed.data.role,
+      tenantId: parsed.data.tenantId ?? null,
+      passwordHash,
+    }).returning();
 
-  await createAuditLog({
-    action: "create",
-    entityType: "user",
-    entityId: user[0]!.id,
-    userId: authUser.userId,
-    tenantId: parsed.data.tenantId ?? null,
-    newValues: { email: parsed.data.email, name: parsed.data.name, role: parsed.data.role },
-  });
+    await createAuditLog({
+      action: "create",
+      entityType: "user",
+      entityId: user[0]!.id,
+      userId: authUser.userId,
+      tenantId: parsed.data.tenantId ?? null,
+      newValues: { email: parsed.data.email, name: parsed.data.name, role: parsed.data.role },
+    });
 
-  const { passwordHash: _, ...safeUser } = user[0]!;
-  res.status(201).json({ ...safeUser, tenantName: null });
+    const { passwordHash: _, ...safeUser } = user[0]!;
+    res.status(201).json({ ...safeUser, tenantName: null });
+  } catch (error: any) {
+    if (error?.code === "23505") {
+      res.status(409).json({ error: "Conflict", message: "Ya existe un usuario con ese correo." });
+      return;
+    }
+
+    console.error("Create user failed", error);
+    res.status(500).json({ error: "InternalServerError", message: "No se pudo crear el usuario." });
+  }
 });
 
 router.get("/:userId", requireAuth, async (req, res) => {
