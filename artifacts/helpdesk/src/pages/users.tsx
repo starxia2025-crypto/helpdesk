@@ -121,7 +121,7 @@ export default function Users() {
 
   const createForm = useForm<CreateUserValues>({
     resolver: zodResolver(createUserSchema.superRefine((values, ctx) => {
-      if (currentUser?.role === "superadmin" && !values.tenantId && values.role !== "superadmin" && values.role !== "tecnico") {
+      if (currentUser?.role === "superadmin" && !values.tenantId && values.role !== "superadmin") {
         ctx.addIssue({
           code: "custom",
           path: ["tenantId"],
@@ -140,7 +140,7 @@ export default function Users() {
 
   const editForm = useForm<EditUserValues>({
     resolver: zodResolver(editUserSchema.superRefine((values, ctx) => {
-      if (currentUser?.role === "superadmin" && !values.tenantId && values.role !== "superadmin" && values.role !== "tecnico") {
+      if (currentUser?.role === "superadmin" && !values.tenantId && values.role !== "superadmin") {
         ctx.addIssue({
           code: "custom",
           path: ["tenantId"],
@@ -248,7 +248,7 @@ export default function Users() {
 
     const tenantId =
       currentUser?.role === "superadmin"
-        ? values.role === "superadmin" || values.role === "tecnico"
+        ? values.role === "superadmin"
           ? null
           : (values.tenantId ?? null)
         : (currentUser?.tenantId ?? null);
@@ -269,7 +269,7 @@ export default function Users() {
 
     const tenantId =
       currentUser?.role === "superadmin"
-        ? values.role === "superadmin" || values.role === "tecnico"
+        ? values.role === "superadmin"
           ? null
           : (values.tenantId ?? null)
         : (currentUser?.tenantId ?? null);
@@ -359,13 +359,13 @@ export default function Users() {
                       <FormItem>
                         <FormLabel>Colegio</FormLabel>
                         <Select
-                          disabled={selectedCreateRole === "superadmin" || selectedCreateRole === "tecnico"}
+                          disabled={selectedCreateRole === "superadmin"}
                           onValueChange={(value) => field.onChange(Number(value))}
                           value={field.value ? String(field.value) : undefined}
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={selectedCreateRole === "superadmin" || selectedCreateRole === "tecnico" ? "No requiere colegio" : "Selecciona un colegio"} />
+                              <SelectValue placeholder={selectedCreateRole === "superadmin" ? "No requiere colegio" : "Selecciona un colegio"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -445,11 +445,11 @@ export default function Users() {
                     <FormItem>
                       <FormLabel>Colegio</FormLabel>
                       <Select
-                        disabled={selectedEditRole === "superadmin" || selectedEditRole === "tecnico"}
+                        disabled={selectedEditRole === "superadmin"}
                         onValueChange={(value) => field.onChange(Number(value))}
                         value={field.value ? String(field.value) : undefined}
                       >
-                        <FormControl><SelectTrigger><SelectValue placeholder={selectedEditRole === "superadmin" || selectedEditRole === "tecnico" ? "No requiere colegio" : "Selecciona un colegio"} /></SelectTrigger></FormControl>
+                        <FormControl><SelectTrigger><SelectValue placeholder={selectedEditRole === "superadmin" ? "No requiere colegio" : "Selecciona un colegio"} /></SelectTrigger></FormControl>
                         <SelectContent>
                           {tenantsData?.data.map((tenant) => (
                             <SelectItem key={tenant.id} value={String(tenant.id)}>{tenant.name}</SelectItem>
