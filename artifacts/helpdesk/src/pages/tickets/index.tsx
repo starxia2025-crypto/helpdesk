@@ -23,9 +23,10 @@ import { Search, Plus, Filter, MessageSquare, Clock, CheckCircle2, Inbox, UserRo
 const openStatuses = ["nuevo", "pendiente", "en_revision", "en_proceso", "esperando_cliente"];
 
 function getTicketSubtitle(ticket: any) {
-  const school = String(ticket.customFields?.school || ticket.category || ticket.tenantName || "Colegio");
+  const school = String(ticket.schoolName || ticket.customFields?.school || ticket.category || ticket.tenantName || "Colegio");
   const inquiryType = String(ticket.customFields?.inquiryType || ticket.customFields?.subjectType || "Consulta general");
-  return { school, inquiryType };
+  const studentEmail = ticket.customFields?.studentEmail ? String(ticket.customFields.studentEmail) : null;
+  return { school, inquiryType, studentEmail };
 }
 
 function SupportTicketCard({
@@ -42,7 +43,7 @@ function SupportTicketCard({
   busy?: boolean;
 }) {
   const [, setLocation] = useLocation();
-  const { school, inquiryType } = getTicketSubtitle(ticket);
+  const { school, inquiryType, studentEmail } = getTicketSubtitle(ticket);
   const isMine = ticket.assignedToId === currentUserId;
   const occupiedByOther = !!ticket.assignedToId && ticket.assignedToId !== currentUserId;
 
@@ -120,6 +121,7 @@ export default function Tickets() {
   const [page, setPage] = useState(1);
 
   const isSupportTech = user?.role === "tecnico";
+  const showSchoolColumn = user?.scopeType === "tenant" || user?.scopeType === "global" || user?.role === "superadmin" || user?.role === "tecnico";
 
   const { data: ticketsData, isLoading, refetch } = useListTickets({
     page,
@@ -391,7 +393,7 @@ export default function Tickets() {
               <TableHead className="font-semibold">Consulta</TableHead>
               <TableHead className="font-semibold">Estado</TableHead>
               <TableHead className="font-semibold">Prioridad</TableHead>
-              {user?.role === "superadmin" && <TableHead className="font-semibold">Colegio</TableHead>}
+              {showSchoolColumn && <TableHead className="font-semibold">Colegio</TableHead>}
               <TableHead className="text-right font-semibold">Actividad</TableHead>
             </TableRow>
           </TableHeader>
@@ -409,13 +411,13 @@ export default function Tickets() {
               ))
             ) : ticketsData?.data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={user?.role === "superadmin" ? 6 : 5} className="h-48 text-center text-slate-500">
+                <TableCell colSpan={showSchoolColumn ? 6 : 5} className="h-48 text-center text-slate-500">
                   No se encontraron tickets con los criterios indicados.
                 </TableCell>
               </TableRow>
             ) : (
               ticketsData?.data.map((ticket) => {
-                const { school, inquiryType } = getTicketSubtitle(ticket);
+                const { school, inquiryType, studentEmail } = getTicketSubtitle(ticket);
                 return (
                   <TableRow key={ticket.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors" onClick={() => setLocation(`/tickets/${ticket.id}`)}>
                     <TableCell className="font-mono text-xs font-medium text-slate-500">#{ticket.ticketNumber}</TableCell>
@@ -426,10 +428,11 @@ export default function Tickets() {
                         <span>·</span>
                         <span>{inquiryType}</span>
                       </div>
+                      {studentEmail ? <div className="mt-1 text-xs text-slate-500">Alumno afectado: {studentEmail}</div> : null}
                     </TableCell>
                     <TableCell><StatusBadge status={ticket.status} /></TableCell>
                     <TableCell><PriorityBadge priority={ticket.priority} /></TableCell>
-                    {user?.role === "superadmin" && <TableCell className="text-sm">{ticket.tenantName}</TableCell>}
+                    {showSchoolColumn && <TableCell className="text-sm">{ticket.schoolName || ticket.tenantName}</TableCell>}
                     <TableCell className="text-right">
                       <div className="flex flex-col items-end gap-1">
                         <div className="flex items-center text-slate-500 text-xs gap-1"><Clock className="h-3 w-3" />{format(new Date(ticket.updatedAt), "d MMM yyyy", { locale: es })}</div>

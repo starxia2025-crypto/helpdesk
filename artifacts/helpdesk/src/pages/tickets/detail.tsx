@@ -1,50 +1,160 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
-import { 
-  useGetTicket, 
-  useListTicketComments, 
+import {
+  useGetTicket,
+  useListTicketComments,
   useAddTicketComment,
   useChangeTicketStatus,
-  useAssignTicket,
   useGetMe,
-  TicketStatus
+  useUpdateTicket,
+  TicketStatus,
+  TicketPriority,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Send, Clock, User, Building, Paperclip, Lock, LockOpen } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ArrowLeft, Send, Clock, User, Building, Paperclip, Lock, LockOpen, Pencil, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { StatusBadge, PriorityBadge } from "@/components/badges";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "@/hooks/use-toast";
+
+function readField(ticket: any, key: string) {
+  return ticket?.customFields && key in ticket.customFields ? ticket.customFields[key] : null;
+}
+
+function formatTicketFieldLabel(key: string) {
+  const labels: Record<string, string> = {
+    studentEmail: "Email del alumno",
+    reporterEmail: "Cuenta que registra la consulta",
+    inquiryType: "Tipo de consulta",
+    subjectType: "La consulta es sobre",
+    stage: "Etapa",
+    course: "Curso",
+    studentEnrollment: "Matricula del alumno",
+    subject: "Asignatura",
+    observations: "Observaciones",
+    activationRequested: "Activacion urgente",
+  };
+
+  return labels[key] ?? key;
+}
 
 export default function TicketDetail() {
   const [location, setLocation] = useLocation();
   const params = useParams();
-  const id = parseInt(params.id || "0", 10);
+  const idFromPath = Number(location.split("/").filter(Boolean).pop() ?? "0");
+  const id = parseInt((params as any).id || (params as any).ticketId || String(idFromPath || 0), 10);
   
   const { data: user } = useGetMe();
-  const { data: ticket, isLoading: ticketLoading } = useGetTicket(id);
+  const { data: ticket, isLoading: ticketLoading, refetch: refetchTicket } = useGetTicket(id);
   const { data: comments, refetch: refetchComments } = useListTicketComments(id);
   
   const [commentText, setCommentText] = useState("");
   const [isInternal, setIsInternal] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editPriority, setEditPriority] = useState<TicketPriority>(TicketPriority.media);
+  const [editStudentEmail, setEditStudentEmail] = useState("");
 
   const addComment = useAddTicketComment({
     mutation: {
-      onSuccess: () => {
+      onSuccess: async () => {
         setCommentText("");
-        refetchComments();
+        await Promise.all([refetchComments(), refetchTicket()]);
       }
     }
   });
 
   const changeStatus = useChangeTicketStatus({
-    mutation: {}
+    mutation: {
+      onSuccess: async () => {
+        await refetchTicket();
+      },
+      onError: (error) => {
+        toast({
+          title: "No se pudo actualizar el estado",
+          description: error instanceof Error ? error.message : "Intentalo de nuevo.",
+          variant: "destructive",
+        });
+      },
+    }
   });
 
-  const isStaff = user?.role === 'tecnico';
+  const updateTicket = useUpdateTicket({
+    mutation: {
+      onSuccess: async () => {
+        setEditOpen(false);
+        toast({
+          title: "Consulta actualizada",
+          description: "Los cambios se han guardado correctamente.",
+        });
+        await refetchTicket();
+      },
+      onError: (error) => {
+        toast({
+          title: "No se pudo actualizar la consulta",
+          description: error instanceof Error ? error.message : "Intentalo de nuevo.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const isStaff = ["superadmin", "tecnico", "admin_cliente"].includes(user?.role ?? "");
+  const canManageTicket = !!user && !!ticket && (isStaff || ticket.createdById === user.id);
+  const incidentData = useMemo(() => {
+    if (!ticket?.customFields) return [];
+
+    const orderedKeys = [
+      "studentEmail",
+      "reporterEmail",
+      "inquiryType",
+      "subjectType",
+      "studentEnrollment",
+      "stage",
+      "course",
+      "subject",
+      "observations",
+      "activationRequested",
+    ];
+
+    return orderedKeys
+      .filter((key) => ticket.customFields[key] !== undefined && ticket.customFields[key] !== null && String(ticket.customFields[key]).trim() !== "")
+      .map((key) => ({
+        key,
+        label: formatTicketFieldLabel(key),
+        value: ticket.customFields[key],
+      }));
+  }, [ticket]);
+
+  const extraCustomFields = useMemo(() => {
+    if (!ticket?.customFields) return [];
+
+    const hidden = new Set([
+      "studentEmail",
+      "reporterEmail",
+      "inquiryType",
+      "subjectType",
+      "studentEnrollment",
+      "stage",
+      "course",
+      "subject",
+      "observations",
+      "activationRequested",
+      "mochilaLookup",
+      "school",
+    ]);
+
+    return Object.entries(ticket.customFields).filter(([key, value]) => !hidden.has(key) && value !== null && value !== undefined && String(value).trim() !== "");
+  }, [ticket]);
 
   if (ticketLoading) {
     return (
@@ -76,6 +186,41 @@ export default function TicketDetail() {
     });
   };
 
+  const handleOpenEdit = () => {
+    setEditTitle(ticket.title ?? "");
+    setEditDescription(ticket.description ?? "");
+    setEditCategory(ticket.category ?? "");
+    setEditPriority((ticket.priority as TicketPriority) ?? TicketPriority.media);
+    setEditStudentEmail(String(readField(ticket, "studentEmail") ?? ""));
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = () => {
+    updateTicket.mutate({
+      ticketId: id,
+      data: {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        category: editCategory.trim() || null,
+        priority: editPriority,
+        customFields: {
+          ...(ticket.customFields ?? {}),
+          studentEmail: editStudentEmail.trim() || null,
+        },
+      },
+    });
+  };
+
+  const handleDeactivateTicket = () => {
+    changeStatus.mutate({
+      ticketId: id,
+      data: {
+        status: TicketStatus.cerrado,
+        comment: "Consulta desactivada por el usuario.",
+      },
+    });
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <Button variant="ghost" onClick={() => setLocation("/tickets")} className="gap-2 -ml-4 text-slate-500">
@@ -100,7 +245,7 @@ export default function TicketDetail() {
               </h1>
               <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500 mt-2">
                 <span className="flex items-center gap-1.5"><User className="h-4 w-4" /> {ticket.createdByName}</span>
-                <span className="flex items-center gap-1.5"><Building className="h-4 w-4" /> {ticket.tenantName}</span>
+                <span className="flex items-center gap-1.5"><Building className="h-4 w-4" /> {ticket.schoolName || ticket.tenantName}</span>
                 <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> {format(new Date(ticket.createdAt), "d MMM yyyy HH:mm", { locale: es })}</span>
               </div>
             </div>
@@ -121,6 +266,40 @@ export default function TicketDetail() {
                     <SelectItem value={TicketStatus.cerrado}>Cerrado</SelectItem>
                   </SelectContent>
                 </Select>
+                {canManageTicket && (
+                  <>
+                    <Button variant="outline" className="gap-2" onClick={handleOpenEdit}>
+                      <Pencil className="h-4 w-4" />
+                      Editar consulta
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="gap-2 text-rose-600 border-rose-200 hover:bg-rose-50"
+                      disabled={ticket.status === TicketStatus.cerrado || changeStatus.isPending}
+                      onClick={handleDeactivateTicket}
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Desactivar consulta
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+            {!isStaff && canManageTicket && (
+              <div className="flex flex-col sm:flex-row gap-3 md:min-w-[200px] shrink-0">
+                <Button variant="outline" className="gap-2" onClick={handleOpenEdit}>
+                  <Pencil className="h-4 w-4" />
+                  Editar consulta
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2 text-rose-600 border-rose-200 hover:bg-rose-50"
+                  disabled={ticket.status === TicketStatus.cerrado || changeStatus.isPending}
+                  onClick={handleDeactivateTicket}
+                >
+                  <XCircle className="h-4 w-4" />
+                  Desactivar consulta
+                </Button>
               </div>
             )}
           </div>
@@ -130,6 +309,29 @@ export default function TicketDetail() {
       <div className="grid md:grid-cols-3 gap-6">
         {/* Hilo principal */}
         <div className="md:col-span-2 space-y-6">
+          <Card className="shadow-sm">
+            <CardHeader className="pb-3">
+              <h2 className="text-lg font-semibold text-slate-900">Datos de la incidencia</h2>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {incidentData.length > 0 ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {incidentData.map((item) => (
+                    <div key={item.key} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">{item.label}</div>
+                      <div className="mt-1 text-sm font-medium text-slate-900 whitespace-pre-wrap">
+                        {typeof item.value === "boolean" ? (item.value ? "Si" : "No") : String(item.value)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                  Esta consulta no tiene datos adicionales de incidencia guardados.
+                </div>
+              )}
+            </CardContent>
+          </Card>
           {/* DescripciÃ³n original */}
           <Card className="shadow-sm">
             <CardContent className="pt-6">
@@ -238,13 +440,21 @@ export default function TicketDetail() {
                 <div className="text-xs text-slate-500 mb-1">Asignado a</div>
                 <div className="font-medium text-sm">{ticket.assignedToName || 'Sin asignar'}</div>
               </div>
-              {ticket.customFields && Object.keys(ticket.customFields).length > 0 && (
+              <div>
+                <div className="text-xs text-slate-500 mb-1">Red educativa</div>
+                <div className="font-medium text-sm">{ticket.tenantName}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 mb-1">Colegio</div>
+                <div className="font-medium text-sm">{ticket.schoolName || ticket.tenantName}</div>
+              </div>
+              {extraCustomFields.length > 0 && (
                 <>
                   <Separator />
-                  {Object.entries(ticket.customFields).map(([key, val]) => (
+                  {extraCustomFields.map(([key, val]) => (
                     <div key={key}>
-                      <div className="text-xs text-slate-500 mb-1 capitalize">{key.replace(/_/g, ' ')}</div>
-                      <div className="font-medium text-sm">{String(val)}</div>
+                      <div className="text-xs text-slate-500 mb-1">{formatTicketFieldLabel(key)}</div>
+                      <div className="font-medium text-sm whitespace-pre-wrap">{String(val)}</div>
                     </div>
                   ))}
                 </>
@@ -276,6 +486,58 @@ export default function TicketDetail() {
           )}
         </div>
       </div>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar consulta</DialogTitle>
+            <DialogDescription>Actualiza los datos visibles de la incidencia sin borrar el historial.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label htmlFor="ticket-title">Asunto</Label>
+              <Input id="ticket-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="ticket-student-email">Email del alumno</Label>
+                <Input id="ticket-student-email" value={editStudentEmail} onChange={(e) => setEditStudentEmail(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="ticket-category">Categoria</Label>
+                <Input id="ticket-category" value={editCategory} onChange={(e) => setEditCategory(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Prioridad</Label>
+              <Select value={editPriority} onValueChange={(value) => setEditPriority(value as TicketPriority)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Prioridad" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TicketPriority.baja}>Baja</SelectItem>
+                  <SelectItem value={TicketPriority.media}>Media</SelectItem>
+                  <SelectItem value={TicketPriority.alta}>Alta</SelectItem>
+                  <SelectItem value={TicketPriority.urgente}>Urgente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="ticket-description">Descripcion</Label>
+              <Textarea id="ticket-description" className="min-h-[180px]" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveEdit} disabled={updateTicket.isPending}>Guardar cambios</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

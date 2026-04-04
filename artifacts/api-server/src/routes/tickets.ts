@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { ticketsTable, usersTable, tenantsTable, commentsTable, auditLogsTable } from "@workspace/db/schema";
+import { auditLogsTable, commentsTable, schoolsTable, tenantsTable, ticketsTable, usersTable } from "@workspace/db/schema";
 import { eq, and, count, desc, gte, lte, sql, or } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 import { createAuditLog } from "../lib/audit.js";
 import { parseDbJson, stringifyDbJson } from "../lib/db-json.js";
 import { containsInsensitive } from "../lib/db-search.js";
+import { findMochilasStudentByEmail } from "../lib/mochilas.js";
 
 const router = Router();
 
@@ -19,6 +20,7 @@ const createTicketSchema = z.object({
   priority: z.enum(ticketPriorities).default("media"),
   category: z.string().nullable().optional(),
   tenantId: z.number(),
+  schoolId: z.number().nullable().optional(),
   customFields: z.record(z.unknown()).nullable().optional(),
 });
 
@@ -27,6 +29,7 @@ const updateTicketSchema = z.object({
   description: z.string().optional(),
   priority: z.enum(ticketPriorities).optional(),
   category: z.string().nullable().optional(),
+  schoolId: z.number().nullable().optional(),
   customFields: z.record(z.unknown()).nullable().optional(),
 });
 
@@ -37,6 +40,11 @@ const assignTicketSchema = z.object({
 const changeStatusSchema = z.object({
   status: z.enum(ticketStatuses),
   comment: z.string().nullable().optional(),
+});
+
+const mochilaStudentLookupSchema = z.object({
+  email: z.string().email(),
+  tenantId: z.coerce.number().optional(),
 });
 
 function generateTicketNumber(): string {
@@ -56,18 +64,55 @@ function normalizeTicket<T extends { customFields?: unknown }>(ticket: T) {
   };
 }
 
+function getTicketVisibilityConditions(authUser: any) {
+  const conditions: any[] = [];
+
+  if (authUser.scopeType === "school" && authUser.schoolId) {
+    conditions.push(eq(ticketsTable.schoolId, authUser.schoolId));
+  } else if (authUser.scopeType === "tenant" && authUser.tenantId) {
+    conditions.push(eq(ticketsTable.tenantId, authUser.tenantId));
+  } else if (authUser.role !== "superadmin" && authUser.role !== "tecnico" && authUser.tenantId) {
+    conditions.push(eq(ticketsTable.tenantId, authUser.tenantId));
+  }
+
+  return conditions;
+}
+
+function canUserAccessTicket(ticket: { tenantId: number; schoolId?: number | null }, authUser: any) {
+  if (authUser.scopeType === "school") {
+    return !!authUser.schoolId && ticket.schoolId === authUser.schoolId;
+  }
+
+  if (authUser.scopeType === "tenant") {
+    return !!authUser.tenantId && ticket.tenantId === authUser.tenantId;
+  }
+
+  if (authUser.role === "superadmin" || authUser.role === "tecnico") {
+    return true;
+  }
+
+  return !!authUser.tenantId && ticket.tenantId === authUser.tenantId;
+}
+
+function canManageTicket(ticket: { createdById: number; tenantId: number; schoolId?: number | null }, authUser: any) {
+  if (["superadmin", "tecnico", "admin_cliente"].includes(authUser.role)) {
+    return canUserAccessTicket(ticket, authUser);
+  }
+
+  return authUser.userId === ticket.createdById && canUserAccessTicket(ticket, authUser);
+}
+
 function buildTicketConditions(query: Record<string, any>, authUser: any) {
   const conditions: any[] = [];
 
-  if (authUser.role === "usuario_cliente" || authUser.role === "visor_cliente" || authUser.role === "admin_cliente") {
-    if (authUser.tenantId) {
-      conditions.push(eq(ticketsTable.tenantId, authUser.tenantId));
-    }
-    if (authUser.role === "usuario_cliente") {
-      conditions.push(eq(ticketsTable.createdById, authUser.userId));
-    }
-  } else if (query["tenantId"]) {
+  conditions.push(...getTicketVisibilityConditions(authUser));
+
+  if ((authUser.role === "superadmin" || authUser.role === "tecnico") && query["tenantId"]) {
     conditions.push(eq(ticketsTable.tenantId, Number(query["tenantId"])));
+  }
+
+  if (query["schoolId"]) {
+    conditions.push(eq(ticketsTable.schoolId, Number(query["schoolId"])));
   }
 
   if (query["status"]) conditions.push(eq(ticketsTable.status, query["status"]));
@@ -102,32 +147,66 @@ router.get("/", requireAuth, async (req, res) => {
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [tickets, totalResult] = await Promise.all([
-    db
-      .select({
-        id: ticketsTable.id,
-        ticketNumber: ticketsTable.ticketNumber,
-        title: ticketsTable.title,
-        description: ticketsTable.description,
-        status: ticketsTable.status,
-        priority: ticketsTable.priority,
-        category: ticketsTable.category,
-        tenantId: ticketsTable.tenantId,
-        tenantName: tenantsTable.name,
-        createdById: ticketsTable.createdById,
-        createdByName: usersTable.name,
-        assignedToId: ticketsTable.assignedToId,
-        customFields: ticketsTable.customFields,
-        createdAt: ticketsTable.createdAt,
-        updatedAt: ticketsTable.updatedAt,
-        resolvedAt: ticketsTable.resolvedAt,
-      })
-      .from(ticketsTable)
-      .leftJoin(tenantsTable, eq(ticketsTable.tenantId, tenantsTable.id))
-      .leftJoin(usersTable, eq(ticketsTable.createdById, usersTable.id))
-      .where(where)
-      .limit(limit)
-      .offset(offset)
-      .orderBy(desc(ticketsTable.createdAt)),
+    (
+      offset > 0
+        ? db
+            .select({
+              id: ticketsTable.id,
+              ticketNumber: ticketsTable.ticketNumber,
+              title: ticketsTable.title,
+              description: ticketsTable.description,
+              status: ticketsTable.status,
+              priority: ticketsTable.priority,
+              category: ticketsTable.category,
+              tenantId: ticketsTable.tenantId,
+              tenantName: tenantsTable.name,
+              schoolId: ticketsTable.schoolId,
+              schoolName: schoolsTable.name,
+              createdById: ticketsTable.createdById,
+              createdByName: usersTable.name,
+              assignedToId: ticketsTable.assignedToId,
+              customFields: ticketsTable.customFields,
+              createdAt: ticketsTable.createdAt,
+              updatedAt: ticketsTable.updatedAt,
+              resolvedAt: ticketsTable.resolvedAt,
+            })
+            .from(ticketsTable)
+            .leftJoin(tenantsTable, eq(ticketsTable.tenantId, tenantsTable.id))
+            .leftJoin(schoolsTable, eq(ticketsTable.schoolId, schoolsTable.id))
+            .leftJoin(usersTable, eq(ticketsTable.createdById, usersTable.id))
+            .where(where)
+            .orderBy(desc(ticketsTable.createdAt))
+            .offset(offset)
+            .fetch(limit)
+        : db
+            .select({
+              id: ticketsTable.id,
+              ticketNumber: ticketsTable.ticketNumber,
+              title: ticketsTable.title,
+              description: ticketsTable.description,
+              status: ticketsTable.status,
+              priority: ticketsTable.priority,
+              category: ticketsTable.category,
+              tenantId: ticketsTable.tenantId,
+              tenantName: tenantsTable.name,
+              schoolId: ticketsTable.schoolId,
+              schoolName: schoolsTable.name,
+              createdById: ticketsTable.createdById,
+              createdByName: usersTable.name,
+              assignedToId: ticketsTable.assignedToId,
+              customFields: ticketsTable.customFields,
+              createdAt: ticketsTable.createdAt,
+              updatedAt: ticketsTable.updatedAt,
+              resolvedAt: ticketsTable.resolvedAt,
+            })
+            .top(limit)
+            .from(ticketsTable)
+            .leftJoin(tenantsTable, eq(ticketsTable.tenantId, tenantsTable.id))
+            .leftJoin(schoolsTable, eq(ticketsTable.schoolId, schoolsTable.id))
+            .leftJoin(usersTable, eq(ticketsTable.createdById, usersTable.id))
+            .where(where)
+            .orderBy(desc(ticketsTable.createdAt))
+    ),
     db.select({ count: count() }).from(ticketsTable).where(where),
   ]);
 
@@ -136,7 +215,7 @@ router.get("/", requireAuth, async (req, res) => {
       const [commentCount, assignee] = await Promise.all([
         db.select({ count: count() }).from(commentsTable).where(eq(commentsTable.ticketId, t.id)),
         t.assignedToId
-          ? db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, t.assignedToId)).limit(1)
+          ? db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, t.assignedToId))
           : Promise.resolve([]),
       ]);
       return {
@@ -159,43 +238,162 @@ router.post("/", requireAuth, async (req, res) => {
     return;
   }
 
-  if (authUser.role === "usuario_cliente" || authUser.role === "visor_cliente" || authUser.role === "admin_cliente") {
-    if (parsed.data.tenantId !== authUser.tenantId) {
-      res.status(403).json({ error: "Forbidden", message: "Cannot create ticket for another tenant" });
-      return;
-    }
+  const resolvedTenantId =
+    authUser.scopeType === "tenant" || authUser.scopeType === "school"
+      ? authUser.tenantId
+      : parsed.data.tenantId;
+
+  const resolvedSchoolId =
+    authUser.scopeType === "school"
+      ? authUser.schoolId
+      : (parsed.data.schoolId ?? null);
+
+  if (!resolvedTenantId) {
+    res.status(400).json({ error: "ValidationError", message: "Selecciona la red educativa del ticket." });
+    return;
   }
 
-  const ticket = await db.insert(ticketsTable).values({
-    ticketNumber: generateTicketNumber(),
+  if (!resolvedSchoolId) {
+    res.status(400).json({ error: "ValidationError", message: "Selecciona el colegio al que pertenece el ticket." });
+    return;
+  }
+
+  const schools = await db
+    .select({
+      id: schoolsTable.id,
+      tenantId: schoolsTable.tenantId,
+      name: schoolsTable.name,
+      active: schoolsTable.active,
+    })
+    .top(1)
+    .from(schoolsTable)
+    .where(eq(schoolsTable.id, resolvedSchoolId));
+
+  const school = schools[0];
+  if (!school || !school.active || school.tenantId !== resolvedTenantId) {
+    res.status(400).json({ error: "ValidationError", message: "El colegio seleccionado no es valido para esta red educativa." });
+    return;
+  }
+
+  if ((authUser.scopeType === "tenant" || authUser.scopeType === "school") && resolvedTenantId !== authUser.tenantId) {
+    res.status(403).json({ error: "Forbidden", message: "Cannot create ticket for another tenant" });
+    return;
+  }
+
+  const ticketNumber = generateTicketNumber();
+
+  await db.insert(ticketsTable).values({
+    ticketNumber,
     title: parsed.data.title,
     description: parsed.data.description,
     priority: parsed.data.priority,
     category: parsed.data.category ?? null,
-    tenantId: parsed.data.tenantId,
+    tenantId: resolvedTenantId,
+    schoolId: resolvedSchoolId,
     createdById: authUser.userId,
     customFields: stringifyDbJson(parsed.data.customFields ?? null),
-  }).returning();
+  });
 
-  const tenant = await db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, parsed.data.tenantId)).limit(1);
-  const creator = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, authUser.userId)).limit(1);
+  const tickets = await db
+    .select({
+      id: ticketsTable.id,
+      ticketNumber: ticketsTable.ticketNumber,
+      title: ticketsTable.title,
+      description: ticketsTable.description,
+      status: ticketsTable.status,
+      priority: ticketsTable.priority,
+      category: ticketsTable.category,
+      tenantId: ticketsTable.tenantId,
+      tenantName: tenantsTable.name,
+      schoolId: ticketsTable.schoolId,
+      schoolName: schoolsTable.name,
+      createdById: ticketsTable.createdById,
+      createdByName: usersTable.name,
+      assignedToId: ticketsTable.assignedToId,
+      customFields: ticketsTable.customFields,
+      createdAt: ticketsTable.createdAt,
+      updatedAt: ticketsTable.updatedAt,
+      resolvedAt: ticketsTable.resolvedAt,
+    })
+    .top(1)
+    .from(ticketsTable)
+    .leftJoin(tenantsTable, eq(ticketsTable.tenantId, tenantsTable.id))
+    .leftJoin(schoolsTable, eq(ticketsTable.schoolId, schoolsTable.id))
+    .leftJoin(usersTable, eq(ticketsTable.createdById, usersTable.id))
+    .where(eq(ticketsTable.ticketNumber, ticketNumber));
+
+  const ticket = tickets[0];
+  if (!ticket) {
+    throw new Error("Ticket insert succeeded but could not be reloaded.");
+  }
 
   await createAuditLog({
     action: "create",
     entityType: "ticket",
-    entityId: ticket[0]!.id,
+    entityId: ticket.id,
     userId: authUser.userId,
-    tenantId: parsed.data.tenantId,
-    newValues: { title: parsed.data.title, priority: parsed.data.priority },
+    tenantId: resolvedTenantId,
+    newValues: { title: parsed.data.title, priority: parsed.data.priority, schoolId: resolvedSchoolId },
   });
 
   res.status(201).json({
-    ...normalizeTicket(ticket[0]),
-    tenantName: tenant[0]?.name ?? "",
-    createdByName: creator[0]?.name ?? "",
+    ...normalizeTicket(ticket),
     assignedToName: null,
     commentCount: 0,
   });
+});
+
+router.get("/mochilas/student", requireAuth, async (req, res) => {
+  const authUser = (req as any).user;
+  const parsed = mochilaStudentLookupSchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "ValidationError", message: "Indica un correo de alumno valido." });
+    return;
+  }
+
+  const tenantId =
+    authUser.scopeType === "global"
+      ? parsed.data.tenantId
+      : authUser.tenantId;
+
+  if (!tenantId) {
+    res.status(400).json({ error: "ValidationError", message: "Selecciona primero la red educativa." });
+    return;
+  }
+
+  const tenants = await db
+    .select({
+      id: tenantsTable.id,
+      name: tenantsTable.name,
+      hasMochilasAccess: tenantsTable.hasMochilasAccess,
+    })
+    .top(1)
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+
+  const tenant = tenants[0];
+  if (!tenant) {
+    res.status(404).json({ error: "NotFound", message: "No se encontro la red educativa seleccionada." });
+    return;
+  }
+
+  if (!tenant.hasMochilasAccess) {
+    res.status(400).json({ error: "MochilasDisabled", message: "Mochilas no esta activado para este colegio o red educativa." });
+    return;
+  }
+
+  try {
+    const student = await findMochilasStudentByEmail(parsed.data.email);
+    if (!student) {
+      res.status(404).json({ error: "NotFound", message: "No se encontro ningun alumno con ese correo en Mochilas." });
+      return;
+    }
+
+    res.json(student);
+  } catch (error) {
+    console.error("Mochilas lookup failed", error);
+    res.status(500).json({ error: "InternalServerError", message: "No se pudo consultar la informacion de Mochilas." });
+  }
 });
 
 router.get("/:ticketId", requireAuth, async (req, res) => {
@@ -213,6 +411,8 @@ router.get("/:ticketId", requireAuth, async (req, res) => {
       category: ticketsTable.category,
       tenantId: ticketsTable.tenantId,
       tenantName: tenantsTable.name,
+      schoolId: ticketsTable.schoolId,
+      schoolName: schoolsTable.name,
       createdById: ticketsTable.createdById,
       createdByName: usersTable.name,
       assignedToId: ticketsTable.assignedToId,
@@ -221,11 +421,13 @@ router.get("/:ticketId", requireAuth, async (req, res) => {
       updatedAt: ticketsTable.updatedAt,
       resolvedAt: ticketsTable.resolvedAt,
     })
+    .top(1)
     .from(ticketsTable)
     .leftJoin(tenantsTable, eq(ticketsTable.tenantId, tenantsTable.id))
+    .leftJoin(schoolsTable, eq(ticketsTable.schoolId, schoolsTable.id))
     .leftJoin(usersTable, eq(ticketsTable.createdById, usersTable.id))
     .where(eq(ticketsTable.id, ticketId))
-    .limit(1);
+    ;
 
   const ticket = tickets[0];
   if (!ticket) {
@@ -233,20 +435,14 @@ router.get("/:ticketId", requireAuth, async (req, res) => {
     return;
   }
 
-  if (authUser.role === "usuario_cliente") {
-    if (ticket.tenantId !== authUser.tenantId) {
-      res.status(403).json({ error: "Forbidden", message: "Access denied" });
-      return;
-    }
-    if (ticket.createdById !== authUser.userId) {
-      res.status(403).json({ error: "Forbidden", message: "Access denied" });
-      return;
-    }
-  } else if (authUser.role === "admin_cliente" || authUser.role === "visor_cliente") {
-    if (ticket.tenantId !== authUser.tenantId) {
-      res.status(403).json({ error: "Forbidden", message: "Access denied" });
-      return;
-    }
+  if (!canUserAccessTicket(ticket, authUser)) {
+    res.status(403).json({ error: "Forbidden", message: "Access denied" });
+    return;
+  }
+
+  if (!canManageTicket(ticket, authUser)) {
+    res.status(403).json({ error: "Forbidden", message: "You cannot edit this ticket" });
+    return;
   }
 
   const [comments, ticketAuditLogs, commentCount, assignee] = await Promise.all([
@@ -267,17 +463,19 @@ router.get("/:ticketId", requireAuth, async (req, res) => {
       .orderBy(commentsTable.createdAt),
     db
       .select()
+      .top(20)
       .from(auditLogsTable)
       .where(and(eq(auditLogsTable.entityType, "ticket"), eq(auditLogsTable.entityId, ticketId)))
-      .orderBy(desc(auditLogsTable.createdAt))
-      .limit(20),
+      .orderBy(desc(auditLogsTable.createdAt)),
     db.select({ count: count() }).from(commentsTable).where(eq(commentsTable.ticketId, ticketId)),
     ticket.assignedToId
-      ? db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, ticket.assignedToId)).limit(1)
+      ? db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, ticket.assignedToId))
       : Promise.resolve([]),
   ]);
 
-  const visibleComments = authUser.role === "usuario_cliente" ? comments.filter((c) => !c.isInternal) : comments;
+  const visibleComments = authUser.scopeType === "school" || authUser.role === "usuario_cliente"
+    ? comments.filter((c) => !c.isInternal)
+    : comments;
 
   res.json({
     ...normalizeTicket(ticket),
@@ -301,26 +499,36 @@ router.patch("/:ticketId", requireAuth, async (req, res) => {
     return;
   }
 
-  const tickets = await db.select().from(ticketsTable).where(eq(ticketsTable.id, ticketId)).limit(1);
+  const tickets = await db.select().top(1).from(ticketsTable).where(eq(ticketsTable.id, ticketId));
   const ticket = tickets[0];
   if (!ticket) {
     res.status(404).json({ error: "NotFound", message: "Ticket not found" });
     return;
   }
 
-  if (authUser.role === "usuario_cliente" && ticket.createdById !== authUser.userId) {
+  if (!canUserAccessTicket(ticket, authUser)) {
     res.status(403).json({ error: "Forbidden", message: "Access denied" });
+    return;
+  }
+
+  if (
+    !["superadmin", "tecnico", "admin_cliente", "visor_cliente"].includes(authUser.role) &&
+    authUser.userId !== ticket.createdById
+  ) {
+    res.status(403).json({ error: "Forbidden", message: "You cannot change the status of this ticket" });
     return;
   }
 
   const updateValues: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
   if (parsed.data.customFields !== undefined) updateValues["customFields"] = stringifyDbJson(parsed.data.customFields);
+  if (parsed.data.schoolId !== undefined) updateValues["schoolId"] = parsed.data.schoolId;
 
-  const updated = await db
+  await db
     .update(ticketsTable)
     .set(updateValues as any)
-    .where(eq(ticketsTable.id, ticketId))
-    .returning();
+    .where(eq(ticketsTable.id, ticketId));
+
+  const updated = await db.select().top(1).from(ticketsTable).where(eq(ticketsTable.id, ticketId));
 
   await createAuditLog({
     action: "update",
@@ -333,10 +541,10 @@ router.patch("/:ticketId", requireAuth, async (req, res) => {
   });
 
   const [tenant, creator, assignee, commentCount] = await Promise.all([
-    db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, ticket.tenantId)).limit(1),
-    db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, ticket.createdById)).limit(1),
+    db.select({ name: tenantsTable.name }).top(1).from(tenantsTable).where(eq(tenantsTable.id, ticket.tenantId)),
+    db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, ticket.createdById)),
     updated[0]!.assignedToId
-      ? db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, updated[0]!.assignedToId!)).limit(1)
+      ? db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, updated[0]!.assignedToId!))
       : Promise.resolve([]),
     db.select({ count: count() }).from(commentsTable).where(eq(commentsTable.ticketId, ticketId)),
   ]);
@@ -359,18 +567,24 @@ router.post("/:ticketId/assign", requireAuth, requireRole("superadmin", "tecnico
     return;
   }
 
-  const tickets = await db.select().from(ticketsTable).where(eq(ticketsTable.id, ticketId)).limit(1);
+  const tickets = await db.select().top(1).from(ticketsTable).where(eq(ticketsTable.id, ticketId));
   const ticket = tickets[0];
   if (!ticket) {
     res.status(404).json({ error: "NotFound", message: "Ticket not found" });
     return;
   }
 
-  const updated = await db
+  if (!canUserAccessTicket(ticket, authUser)) {
+    res.status(403).json({ error: "Forbidden", message: "Access denied" });
+    return;
+  }
+
+  await db
     .update(ticketsTable)
     .set({ assignedToId: parsed.data.userId, updatedAt: new Date() })
-    .where(eq(ticketsTable.id, ticketId))
-    .returning();
+    .where(eq(ticketsTable.id, ticketId));
+
+  const updated = await db.select().top(1).from(ticketsTable).where(eq(ticketsTable.id, ticketId));
 
   await createAuditLog({
     action: "assign",
@@ -383,10 +597,10 @@ router.post("/:ticketId/assign", requireAuth, requireRole("superadmin", "tecnico
   });
 
   const [tenant, creator, assignee, commentCount] = await Promise.all([
-    db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, ticket.tenantId)).limit(1),
-    db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, ticket.createdById)).limit(1),
+    db.select({ name: tenantsTable.name }).top(1).from(tenantsTable).where(eq(tenantsTable.id, ticket.tenantId)),
+    db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, ticket.createdById)),
     parsed.data.userId
-      ? db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, parsed.data.userId)).limit(1)
+      ? db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, parsed.data.userId))
       : Promise.resolve([]),
     db.select({ count: count() }).from(commentsTable).where(eq(commentsTable.ticketId, ticketId)),
   ]);
@@ -409,7 +623,7 @@ router.post("/:ticketId/status", requireAuth, async (req, res) => {
     return;
   }
 
-  const tickets = await db.select().from(ticketsTable).where(eq(ticketsTable.id, ticketId)).limit(1);
+  const tickets = await db.select().top(1).from(ticketsTable).where(eq(ticketsTable.id, ticketId));
   const ticket = tickets[0];
   if (!ticket) {
     res.status(404).json({ error: "NotFound", message: "Ticket not found" });
@@ -425,11 +639,17 @@ router.post("/:ticketId/status", requireAuth, async (req, res) => {
     updateData["resolvedAt"] = new Date();
   }
 
-  const updated = await db
+  if (!canUserAccessTicket(ticket, authUser)) {
+    res.status(403).json({ error: "Forbidden", message: "Access denied" });
+    return;
+  }
+
+  await db
     .update(ticketsTable)
     .set(updateData as any)
-    .where(eq(ticketsTable.id, ticketId))
-    .returning();
+    .where(eq(ticketsTable.id, ticketId));
+
+  const updated = await db.select().top(1).from(ticketsTable).where(eq(ticketsTable.id, ticketId));
 
   if (parsed.data.comment) {
     await db.insert(commentsTable).values({
@@ -451,10 +671,10 @@ router.post("/:ticketId/status", requireAuth, async (req, res) => {
   });
 
   const [tenant, creator, assignee, commentCount] = await Promise.all([
-    db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, ticket.tenantId)).limit(1),
-    db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, ticket.createdById)).limit(1),
+    db.select({ name: tenantsTable.name }).top(1).from(tenantsTable).where(eq(tenantsTable.id, ticket.tenantId)),
+    db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, ticket.createdById)),
     updated[0]!.assignedToId
-      ? db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, updated[0]!.assignedToId!)).limit(1)
+      ? db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, updated[0]!.assignedToId!))
       : Promise.resolve([]),
     db.select({ count: count() }).from(commentsTable).where(eq(commentsTable.ticketId, ticketId)),
   ]);
@@ -472,10 +692,15 @@ router.get("/:ticketId/comments", requireAuth, async (req, res) => {
   const ticketId = Number(req.params["ticketId"]);
   const authUser = (req as any).user;
 
-  const tickets = await db.select().from(ticketsTable).where(eq(ticketsTable.id, ticketId)).limit(1);
+  const tickets = await db.select().top(1).from(ticketsTable).where(eq(ticketsTable.id, ticketId));
   const ticket = tickets[0];
   if (!ticket) {
     res.status(404).json({ error: "NotFound", message: "Ticket not found" });
+    return;
+  }
+
+  if (!canUserAccessTicket(ticket, authUser)) {
+    res.status(403).json({ error: "Forbidden", message: "Access denied" });
     return;
   }
 
@@ -495,7 +720,7 @@ router.get("/:ticketId/comments", requireAuth, async (req, res) => {
     .where(eq(commentsTable.ticketId, ticketId))
     .orderBy(commentsTable.createdAt);
 
-  const filtered = authUser.role === "usuario_cliente" ? comments.filter((c) => !c.isInternal) : comments;
+  const filtered = authUser.scopeType === "school" || authUser.role === "usuario_cliente" ? comments.filter((c) => !c.isInternal) : comments;
 
   res.json(filtered);
 });
@@ -514,24 +739,32 @@ router.post("/:ticketId/comments", requireAuth, async (req, res) => {
     return;
   }
 
-  const tickets = await db.select().from(ticketsTable).where(eq(ticketsTable.id, ticketId)).limit(1);
+  const tickets = await db.select().top(1).from(ticketsTable).where(eq(ticketsTable.id, ticketId));
   if (!tickets[0]) {
     res.status(404).json({ error: "NotFound", message: "Ticket not found" });
     return;
   }
 
+  if (!canUserAccessTicket(tickets[0], authUser)) {
+    res.status(403).json({ error: "Forbidden", message: "Access denied" });
+    return;
+  }
+
   const isInternal = parsed.data.isInternal && ["superadmin", "tecnico", "admin_cliente", "visor_cliente"].includes(authUser.role);
 
-  const comment = await db.insert(commentsTable).values({
+  await db.insert(commentsTable).values({
     ticketId,
     authorId: authUser.userId,
     content: parsed.data.content,
     isInternal,
-  }).returning();
+  });
 
   await db.update(ticketsTable).set({ updatedAt: new Date() }).where(eq(ticketsTable.id, ticketId));
 
-  const author = await db.select({ name: usersTable.name, role: usersTable.role }).from(usersTable).where(eq(usersTable.id, authUser.userId)).limit(1);
+  const [comment, author] = await Promise.all([
+    db.select().top(1).from(commentsTable).where(eq(commentsTable.ticketId, ticketId)).orderBy(desc(commentsTable.id)),
+    db.select({ name: usersTable.name, role: usersTable.role }).top(1).from(usersTable).where(eq(usersTable.id, authUser.userId)),
+  ]);
 
   res.status(201).json({
     ...comment[0],
