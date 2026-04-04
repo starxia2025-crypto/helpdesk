@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { usersTable, tenantsTable } from "@workspace/db/schema";
+import { schoolsTable, usersTable, tenantsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import {
   requireAuth,
@@ -27,6 +27,17 @@ async function buildUserResponse(user: typeof usersTable.$inferSelect) {
   let tenantSidebarBackgroundColor: string | null = null;
   let tenantSidebarTextColor: string | null = null;
   let tenantQuickLinks: Array<{ label: string; url: string; icon: string }> = [];
+  let schoolName: string | null = null;
+
+  if (user.schoolId) {
+    const schools = await db
+      .select({ name: schoolsTable.name })
+      .top(1)
+      .from(schoolsTable)
+      .where(eq(schoolsTable.id, user.schoolId));
+
+    schoolName = schools[0]?.name ?? null;
+  }
 
   if (user.tenantId) {
     const tenants = await db
@@ -56,6 +67,9 @@ async function buildUserResponse(user: typeof usersTable.$inferSelect) {
     name: user.name,
     role: user.role,
     tenantId: user.tenantId ?? null,
+    schoolId: user.schoolId ?? null,
+    schoolName,
+    scopeType: user.scopeType,
     tenantName,
     tenantSlug,
     tenantPrimaryColor,
@@ -221,7 +235,7 @@ router.get("/microsoft/callback", async (req, res) => {
     let user = existingUsers[0];
 
     if (!user) {
-      const created = await db
+      await db
         .insert(usersTable)
         .values({
           email,
@@ -229,10 +243,13 @@ router.get("/microsoft/callback", async (req, res) => {
           passwordHash: "",
           role: "usuario_cliente",
           tenantId: null,
+          schoolId: null,
+          scopeType: "school",
           active: true,
-        })
-        .returning();
-      user = created[0];
+        });
+
+      const createdUsers = await db.select().top(1).from(usersTable).where(eq(usersTable.email, email));
+      user = createdUsers[0];
     }
 
     if (!user.active) {
