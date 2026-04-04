@@ -79,6 +79,10 @@ function getTicketVisibilityConditions(authUser: any) {
 }
 
 function canUserAccessTicket(ticket: { tenantId: number; schoolId?: number | null }, authUser: any) {
+  if (authUser.role === "superadmin" || authUser.role === "tecnico") {
+    return true;
+  }
+
   if (authUser.scopeType === "school") {
     return !!authUser.schoolId && ticket.schoolId === authUser.schoolId;
   }
@@ -86,11 +90,6 @@ function canUserAccessTicket(ticket: { tenantId: number; schoolId?: number | nul
   if (authUser.scopeType === "tenant") {
     return !!authUser.tenantId && ticket.tenantId === authUser.tenantId;
   }
-
-  if (authUser.role === "superadmin" || authUser.role === "tecnico") {
-    return true;
-  }
-
   return !!authUser.tenantId && ticket.tenantId === authUser.tenantId;
 }
 
@@ -437,11 +436,6 @@ router.get("/:ticketId", requireAuth, async (req, res) => {
 
   if (!canUserAccessTicket(ticket, authUser)) {
     res.status(403).json({ error: "Forbidden", message: "Access denied" });
-    return;
-  }
-
-  if (!canManageTicket(ticket, authUser)) {
-    res.status(403).json({ error: "Forbidden", message: "You cannot edit this ticket" });
     return;
   }
 

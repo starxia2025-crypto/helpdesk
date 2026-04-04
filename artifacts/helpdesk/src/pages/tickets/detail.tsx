@@ -48,8 +48,8 @@ function formatTicketFieldLabel(key: string) {
 export default function TicketDetail() {
   const [location, setLocation] = useLocation();
   const params = useParams();
-  const idFromPath = Number(location.split("/").filter(Boolean).pop() ?? "0");
-  const id = parseInt((params as any).id || (params as any).ticketId || String(idFromPath || 0), 10);
+  const ticketIdFromPath = location.match(/\/tickets\/(\d+)/)?.[1] ?? "0";
+  const id = parseInt((params as any).id || (params as any).ticketId || ticketIdFromPath, 10);
   
   const { data: user } = useGetMe();
   const { data: ticket, isLoading: ticketLoading, refetch: refetchTicket } = useGetTicket(id);
