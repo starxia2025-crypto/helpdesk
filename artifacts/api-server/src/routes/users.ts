@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { usersTable, tenantsTable } from "@workspace/db/schema";
-import { eq, ilike, and, count } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { requireAuth, requireRole, hashPassword } from "../lib/auth.js";
 import { createAuditLog } from "../lib/audit.js";
+import { containsInsensitive } from "../lib/db-search.js";
 
 const router = Router();
 
@@ -41,7 +42,7 @@ router.get("/", requireAuth, async (req, res) => {
   }
 
   const conditions = [];
-  if (search) conditions.push(ilike(usersTable.name, `%${search}%`));
+  if (search) conditions.push(containsInsensitive(usersTable.name, search));
   if (role) conditions.push(eq(usersTable.role, role));
   if (active !== undefined) conditions.push(eq(usersTable.active, active));
   if (tenantId) conditions.push(eq(usersTable.tenantId, tenantId));
@@ -115,7 +116,7 @@ router.post("/", requireAuth, requireRole("superadmin", "admin_cliente", "tecnic
     const { passwordHash: _, ...safeUser } = user[0]!;
     res.status(201).json({ ...safeUser, tenantName: null });
   } catch (error: any) {
-    if (error?.code === "23505") {
+    if (error?.code === "23505" || error?.code === "2627" || error?.code === "2601") {
       res.status(409).json({ error: "Conflict", message: "Ya existe un usuario con ese correo." });
       return;
     }

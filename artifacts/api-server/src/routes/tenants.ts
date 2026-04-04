@@ -2,11 +2,19 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { tenantsTable, usersTable, ticketsTable } from "@workspace/db/schema";
-import { eq, ilike, count, and, sql } from "drizzle-orm";
+import { eq, count, and, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 import { createAuditLog } from "../lib/audit.js";
+import { parseDbJson, stringifyDbJson } from "../lib/db-json.js";
+import { containsInsensitive } from "../lib/db-search.js";
 
 const router = Router();
+
+const quickLinkSchema = z.object({
+  label: z.string().min(1),
+  url: z.string().url(),
+  icon: z.string().min(1),
+});
 
 const createTenantSchema = z.object({
   name: z.string().min(2),
@@ -15,11 +23,7 @@ const createTenantSchema = z.object({
   primaryColor: z.string().nullable().optional(),
   sidebarBackgroundColor: z.string().nullable().optional(),
   sidebarTextColor: z.string().nullable().optional(),
-  quickLinks: z.array(z.object({
-    label: z.string().min(1),
-    url: z.string().url(),
-    icon: z.string().min(1),
-  })).optional(),
+  quickLinks: z.array(quickLinkSchema).optional(),
 });
 
 const updateTenantSchema = z.object({
@@ -29,13 +33,13 @@ const updateTenantSchema = z.object({
   primaryColor: z.string().nullable().optional(),
   sidebarBackgroundColor: z.string().nullable().optional(),
   sidebarTextColor: z.string().nullable().optional(),
-  quickLinks: z.array(z.object({
-    label: z.string().min(1),
-    url: z.string().url(),
-    icon: z.string().min(1),
-  })).optional(),
+  quickLinks: z.array(quickLinkSchema).optional(),
   logoUrl: z.string().nullable().optional(),
 });
+
+function parseQuickLinks(value: unknown) {
+  return parseDbJson<Array<{ label: string; url: string; icon: string }>>(value, []);
+}
 
 router.get("/", requireAuth, requireRole("superadmin", "tecnico", "manager"), async (req, res) => {
   const page = Math.max(1, Number(req.query["page"]) || 1);
@@ -45,7 +49,7 @@ router.get("/", requireAuth, requireRole("superadmin", "tecnico", "manager"), as
 
   const conditions = [];
   if (search) {
-    conditions.push(ilike(tenantsTable.name, `%${search}%`));
+    conditions.push(containsInsensitive(tenantsTable.name, search));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -57,21 +61,19 @@ router.get("/", requireAuth, requireRole("superadmin", "tecnico", "manager"), as
 
   const total = Number(totalResult[0]?.count ?? 0);
 
-  // Get stats for each tenant
   const tenantsWithStats = await Promise.all(
     tenants.map(async (tenant) => {
       const [userCount, ticketCount, openTicketCount] = await Promise.all([
         db.select({ count: count() }).from(usersTable).where(eq(usersTable.tenantId, tenant.id)),
         db.select({ count: count() }).from(ticketsTable).where(eq(ticketsTable.tenantId, tenant.id)),
         db.select({ count: count() }).from(ticketsTable).where(
-          and(
-            eq(ticketsTable.tenantId, tenant.id),
-            sql`${ticketsTable.status} NOT IN ('resuelto', 'cerrado')`
-          )
+          and(eq(ticketsTable.tenantId, tenant.id), sql`${ticketsTable.status} NOT IN ('resuelto', 'cerrado')`)
         ),
       ]);
+
       return {
         ...tenant,
+        quickLinks: parseQuickLinks(tenant.quickLinks),
         totalUsers: Number(userCount[0]?.count ?? 0),
         totalTickets: Number(ticketCount[0]?.count ?? 0),
         openTickets: Number(openTicketCount[0]?.count ?? 0),
@@ -96,25 +98,11 @@ router.post("/", requireAuth, requireRole("superadmin", "tecnico", "manager"), a
       slug: parsed.data.slug,
     };
 
-    if (parsed.data.contactEmail !== undefined) {
-      insertValues["contactEmail"] = parsed.data.contactEmail ?? null;
-    }
-
-    if (parsed.data.primaryColor !== undefined) {
-      insertValues["primaryColor"] = parsed.data.primaryColor ?? null;
-    }
-
-    if (parsed.data.sidebarBackgroundColor !== undefined) {
-      insertValues["sidebarBackgroundColor"] = parsed.data.sidebarBackgroundColor ?? null;
-    }
-
-    if (parsed.data.sidebarTextColor !== undefined) {
-      insertValues["sidebarTextColor"] = parsed.data.sidebarTextColor ?? null;
-    }
-
-    if (parsed.data.quickLinks !== undefined) {
-      insertValues["quickLinks"] = parsed.data.quickLinks;
-    }
+    if (parsed.data.contactEmail !== undefined) insertValues["contactEmail"] = parsed.data.contactEmail ?? null;
+    if (parsed.data.primaryColor !== undefined) insertValues["primaryColor"] = parsed.data.primaryColor ?? null;
+    if (parsed.data.sidebarBackgroundColor !== undefined) insertValues["sidebarBackgroundColor"] = parsed.data.sidebarBackgroundColor ?? null;
+    if (parsed.data.sidebarTextColor !== undefined) insertValues["sidebarTextColor"] = parsed.data.sidebarTextColor ?? null;
+    if (parsed.data.quickLinks !== undefined) insertValues["quickLinks"] = stringifyDbJson(parsed.data.quickLinks);
 
     const tenant = await db.insert(tenantsTable).values(insertValues as any).returning();
 
@@ -126,18 +114,16 @@ router.post("/", requireAuth, requireRole("superadmin", "tecnico", "manager"), a
       newValues: parsed.data,
     });
 
-    res.status(201).json({ ...tenant[0], totalUsers: 0, totalTickets: 0, openTickets: 0 });
+    res.status(201).json({
+      ...tenant[0],
+      quickLinks: parseQuickLinks(tenant[0]?.quickLinks),
+      totalUsers: 0,
+      totalTickets: 0,
+      openTickets: 0,
+    });
   } catch (error: any) {
-    if (error?.code === "23505") {
+    if (error?.code === "23505" || error?.code === "2627" || error?.code === "2601") {
       res.status(409).json({ error: "Conflict", message: "Ya existe un cliente con ese slug." });
-      return;
-    }
-
-    if (error?.code === "42703" || error?.code === "42P01") {
-      res.status(500).json({
-        error: "DatabaseOutOfDate",
-        message: "La base de datos no esta actualizada para la configuracion de clientes. Ejecuta pnpm --filter @workspace/db run push en el servicio api y vuelve a intentarlo.",
-      });
       return;
     }
 
@@ -150,7 +136,6 @@ router.get("/:tenantId", requireAuth, requireRole("superadmin", "tecnico", "admi
   const tenantId = Number(req.params["tenantId"]);
   const authUser = (req as any).user;
 
-  // admin_cliente can only access their own tenant
   if (authUser.role === "admin_cliente" && authUser.tenantId !== tenantId) {
     res.status(403).json({ error: "Forbidden", message: "Access denied" });
     return;
@@ -173,6 +158,7 @@ router.get("/:tenantId", requireAuth, requireRole("superadmin", "tecnico", "admi
 
   res.json({
     ...tenant,
+    quickLinks: parseQuickLinks(tenant.quickLinks),
     totalUsers: Number(userCount[0]?.count ?? 0),
     totalTickets: Number(ticketCount[0]?.count ?? 0),
     openTickets: Number(openTicketCount[0]?.count ?? 0),
@@ -201,9 +187,14 @@ router.patch("/:tenantId", requireAuth, requireRole("superadmin", "admin_cliente
     return;
   }
 
+  const updateValues: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  if (parsed.data.quickLinks !== undefined) {
+    updateValues["quickLinks"] = stringifyDbJson(parsed.data.quickLinks);
+  }
+
   const updated = await db
     .update(tenantsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set(updateValues as any)
     .where(eq(tenantsTable.id, tenantId))
     .returning();
 
@@ -227,6 +218,7 @@ router.patch("/:tenantId", requireAuth, requireRole("superadmin", "admin_cliente
 
   res.json({
     ...updated[0],
+    quickLinks: parseQuickLinks(updated[0]?.quickLinks),
     totalUsers: Number(userCount[0]?.count ?? 0),
     totalTickets: Number(ticketCount[0]?.count ?? 0),
     openTickets: Number(openTicketCount[0]?.count ?? 0),

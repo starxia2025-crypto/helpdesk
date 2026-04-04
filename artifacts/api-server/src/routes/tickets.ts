@@ -2,9 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { ticketsTable, usersTable, tenantsTable, commentsTable, auditLogsTable } from "@workspace/db/schema";
-import { eq, ilike, and, count, desc, gte, lte, sql, or } from "drizzle-orm";
+import { eq, and, count, desc, gte, lte, sql, or } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 import { createAuditLog } from "../lib/audit.js";
+import { parseDbJson, stringifyDbJson } from "../lib/db-json.js";
+import { containsInsensitive } from "../lib/db-search.js";
 
 const router = Router();
 
@@ -43,15 +45,24 @@ function generateTicketNumber(): string {
   return `TKT-${timestamp}-${random}`;
 }
 
+function parseCustomFields(value: unknown) {
+  return parseDbJson<Record<string, unknown> | null>(value, null);
+}
+
+function normalizeTicket<T extends { customFields?: unknown }>(ticket: T) {
+  return {
+    ...ticket,
+    customFields: parseCustomFields(ticket.customFields),
+  };
+}
+
 function buildTicketConditions(query: Record<string, any>, authUser: any) {
   const conditions: any[] = [];
 
-  // Tenant isolation
   if (authUser.role === "usuario_cliente" || authUser.role === "visor_cliente" || authUser.role === "admin_cliente") {
     if (authUser.tenantId) {
       conditions.push(eq(ticketsTable.tenantId, authUser.tenantId));
     }
-    // usuario_cliente only sees their own tickets
     if (authUser.role === "usuario_cliente") {
       conditions.push(eq(ticketsTable.createdById, authUser.userId));
     }
@@ -72,8 +83,8 @@ function buildTicketConditions(query: Record<string, any>, authUser: any) {
   if (query["search"]) {
     conditions.push(
       or(
-        ilike(ticketsTable.title, `%${query["search"]}%`),
-        ilike(ticketsTable.ticketNumber, `%${query["search"]}%`)
+        containsInsensitive(ticketsTable.title, query["search"]),
+        containsInsensitive(ticketsTable.ticketNumber, query["search"])
       )
     );
   }
@@ -120,7 +131,6 @@ router.get("/", requireAuth, async (req, res) => {
     db.select({ count: count() }).from(ticketsTable).where(where),
   ]);
 
-  // Get comment counts and assignee names
   const ticketsWithExtra = await Promise.all(
     tickets.map(async (t) => {
       const [commentCount, assignee] = await Promise.all([
@@ -130,7 +140,7 @@ router.get("/", requireAuth, async (req, res) => {
           : Promise.resolve([]),
       ]);
       return {
-        ...t,
+        ...normalizeTicket(t),
         assignedToName: (assignee as any)[0]?.name ?? null,
         commentCount: Number(commentCount[0]?.count ?? 0),
       };
@@ -149,7 +159,6 @@ router.post("/", requireAuth, async (req, res) => {
     return;
   }
 
-  // Ensure tenant isolation
   if (authUser.role === "usuario_cliente" || authUser.role === "visor_cliente" || authUser.role === "admin_cliente") {
     if (parsed.data.tenantId !== authUser.tenantId) {
       res.status(403).json({ error: "Forbidden", message: "Cannot create ticket for another tenant" });
@@ -165,7 +174,7 @@ router.post("/", requireAuth, async (req, res) => {
     category: parsed.data.category ?? null,
     tenantId: parsed.data.tenantId,
     createdById: authUser.userId,
-    customFields: parsed.data.customFields ?? null,
+    customFields: stringifyDbJson(parsed.data.customFields ?? null),
   }).returning();
 
   const tenant = await db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, parsed.data.tenantId)).limit(1);
@@ -181,7 +190,7 @@ router.post("/", requireAuth, async (req, res) => {
   });
 
   res.status(201).json({
-    ...ticket[0],
+    ...normalizeTicket(ticket[0]),
     tenantName: tenant[0]?.name ?? "",
     createdByName: creator[0]?.name ?? "",
     assignedToName: null,
@@ -224,13 +233,12 @@ router.get("/:ticketId", requireAuth, async (req, res) => {
     return;
   }
 
-  // Tenant isolation check
   if (authUser.role === "usuario_cliente") {
     if (ticket.tenantId !== authUser.tenantId) {
       res.status(403).json({ error: "Forbidden", message: "Access denied" });
       return;
     }
-    if (authUser.role === "usuario_cliente" && ticket.createdById !== authUser.userId) {
+    if (ticket.createdById !== authUser.userId) {
       res.status(403).json({ error: "Forbidden", message: "Access denied" });
       return;
     }
@@ -269,17 +277,18 @@ router.get("/:ticketId", requireAuth, async (req, res) => {
       : Promise.resolve([]),
   ]);
 
-  // Filter internal comments for non-technicians
-  const visibleComments = (authUser.role === "usuario_cliente")
-    ? comments.filter((c) => !c.isInternal)
-    : comments;
+  const visibleComments = authUser.role === "usuario_cliente" ? comments.filter((c) => !c.isInternal) : comments;
 
   res.json({
-    ...ticket,
+    ...normalizeTicket(ticket),
     assignedToName: (assignee as any)[0]?.name ?? null,
     commentCount: Number(commentCount[0]?.count ?? 0),
     comments: visibleComments,
-    auditLogs: ticketAuditLogs,
+    auditLogs: ticketAuditLogs.map((log) => ({
+      ...log,
+      oldValues: parseDbJson<Record<string, unknown> | null>(log.oldValues, null),
+      newValues: parseDbJson<Record<string, unknown> | null>(log.newValues, null),
+    })),
   });
 });
 
@@ -299,15 +308,17 @@ router.patch("/:ticketId", requireAuth, async (req, res) => {
     return;
   }
 
-  // Only creator, technicians, and admin can update
   if (authUser.role === "usuario_cliente" && ticket.createdById !== authUser.userId) {
     res.status(403).json({ error: "Forbidden", message: "Access denied" });
     return;
   }
 
+  const updateValues: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  if (parsed.data.customFields !== undefined) updateValues["customFields"] = stringifyDbJson(parsed.data.customFields);
+
   const updated = await db
     .update(ticketsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set(updateValues as any)
     .where(eq(ticketsTable.id, ticketId))
     .returning();
 
@@ -331,7 +342,7 @@ router.patch("/:ticketId", requireAuth, async (req, res) => {
   ]);
 
   res.json({
-    ...updated[0],
+    ...normalizeTicket(updated[0]),
     tenantName: tenant[0]?.name ?? "",
     createdByName: creator[0]?.name ?? "",
     assignedToName: (assignee as any)[0]?.name ?? null,
@@ -381,7 +392,7 @@ router.post("/:ticketId/assign", requireAuth, requireRole("superadmin", "tecnico
   ]);
 
   res.json({
-    ...updated[0],
+    ...normalizeTicket(updated[0]),
     tenantName: tenant[0]?.name ?? "",
     createdByName: creator[0]?.name ?? "",
     assignedToName: (assignee as any)[0]?.name ?? null,
@@ -420,7 +431,6 @@ router.post("/:ticketId/status", requireAuth, async (req, res) => {
     .where(eq(ticketsTable.id, ticketId))
     .returning();
 
-  // Add status change comment if provided
   if (parsed.data.comment) {
     await db.insert(commentsTable).values({
       ticketId,
@@ -450,7 +460,7 @@ router.post("/:ticketId/status", requireAuth, async (req, res) => {
   ]);
 
   res.json({
-    ...updated[0],
+    ...normalizeTicket(updated[0]),
     tenantName: tenant[0]?.name ?? "",
     createdByName: creator[0]?.name ?? "",
     assignedToName: (assignee as any)[0]?.name ?? null,
@@ -485,9 +495,7 @@ router.get("/:ticketId/comments", requireAuth, async (req, res) => {
     .where(eq(commentsTable.ticketId, ticketId))
     .orderBy(commentsTable.createdAt);
 
-  const filtered = (authUser.role === "usuario_cliente")
-    ? comments.filter((c) => !c.isInternal)
-    : comments;
+  const filtered = authUser.role === "usuario_cliente" ? comments.filter((c) => !c.isInternal) : comments;
 
   res.json(filtered);
 });
@@ -512,7 +520,6 @@ router.post("/:ticketId/comments", requireAuth, async (req, res) => {
     return;
   }
 
-  // Only technicians can post internal comments
   const isInternal = parsed.data.isInternal && ["superadmin", "tecnico", "admin_cliente", "visor_cliente"].includes(authUser.role);
 
   const comment = await db.insert(commentsTable).values({

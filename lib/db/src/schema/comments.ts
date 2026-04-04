@@ -1,16 +1,17 @@
-import { pgTable, serial, text, boolean, timestamp, integer } from "drizzle-orm/pg-core";
+import { mssqlTable, int, nvarchar } from "drizzle-orm/mssql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { ticketsTable } from "./tickets";
 import { usersTable } from "./users";
+import { boolColumn, createdAtColumn, idColumn } from "./_shared";
 
-export const commentsTable = pgTable("comments", {
-  id: serial("id").primaryKey(),
-  ticketId: integer("ticket_id").notNull().references(() => ticketsTable.id),
-  authorId: integer("author_id").notNull().references(() => usersTable.id),
-  content: text("content").notNull(),
-  isInternal: boolean("is_internal").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+export const commentsTable = mssqlTable("SOP_comments", {
+  id: idColumn(),
+  ticketId: int("ticket_id").notNull().references(() => ticketsTable.id),
+  authorId: int("author_id").notNull().references(() => usersTable.id),
+  content: nvarchar("content", { length: "max" }).notNull(),
+  isInternal: boolColumn("is_internal", false),
+  createdAt: createdAtColumn(),
 });
 
 export const insertCommentSchema = createInsertSchema(commentsTable).omit({ id: true, createdAt: true });

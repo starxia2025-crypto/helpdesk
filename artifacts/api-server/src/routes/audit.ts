@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { auditLogsTable, usersTable, tenantsTable } from "@workspace/db/schema";
-import { eq, and, count, desc, gte, lte, ilike } from "drizzle-orm";
+import { eq, and, count, desc, gte, lte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { parseDbJson } from "../lib/db-json.js";
 
 const router = Router();
 
@@ -64,7 +65,17 @@ router.get("/", requireAuth, requireRole("superadmin", "admin_cliente", "tecnico
   ]);
 
   const total = Number(totalResult[0]?.count ?? 0);
-  res.json({ data: logs, total, page, limit, totalPages: Math.ceil(total / limit) });
+  res.json({
+    data: logs.map((log) => ({
+      ...log,
+      oldValues: parseDbJson<Record<string, unknown> | null>(log.oldValues, null),
+      newValues: parseDbJson<Record<string, unknown> | null>(log.newValues, null),
+    })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  });
 });
 
 export default router;

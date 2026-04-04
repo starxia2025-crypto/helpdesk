@@ -1,24 +1,25 @@
-import { pgTable, serial, text, boolean, timestamp, varchar, jsonb } from "drizzle-orm/pg-core";
+import { mssqlTable, nvarchar } from "drizzle-orm/mssql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { boolColumn, createdAtColumn, idColumn, jsonTextColumn, updatedAtColumn } from "./_shared";
 
-export const tenantsTable = pgTable("tenants", {
-  id: serial("id").primaryKey(),
-  name: varchar("name", { length: 255 }).notNull(),
-  slug: varchar("slug", { length: 100 }).notNull().unique(),
-  legalName: varchar("legal_name", { length: 255 }),
-  educationGroupType: varchar("education_group_type", { length: 80 }).default("school_group"),
-  dbSchema: varchar("db_schema", { length: 100 }),
-  active: boolean("active").notNull().default(true),
-  logoUrl: text("logo_url"),
-  primaryColor: varchar("primary_color", { length: 20 }),
-  sidebarBackgroundColor: varchar("sidebar_background_color", { length: 20 }),
-  sidebarTextColor: varchar("sidebar_text_color", { length: 20 }),
-  quickLinks: jsonb("quick_links").$type<Array<{ label: string; url: string; icon: string }>>().default([]),
-  contactEmail: varchar("contact_email", { length: 255 }),
-  supportEmail: varchar("support_email", { length: 255 }),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+export const tenantsTable = mssqlTable("SOP_tenants", {
+  id: idColumn(),
+  name: nvarchar("name", { length: 255 }).notNull(),
+  slug: nvarchar("slug", { length: 100 }).notNull().unique(),
+  legalName: nvarchar("legal_name", { length: 255 }),
+  educationGroupType: nvarchar("education_group_type", { length: 80 }).default("school_group"),
+  dbSchema: nvarchar("db_schema", { length: 100 }),
+  active: boolColumn("active", true),
+  logoUrl: nvarchar("logo_url", { length: "max" }),
+  primaryColor: nvarchar("primary_color", { length: 20 }),
+  sidebarBackgroundColor: nvarchar("sidebar_background_color", { length: 20 }),
+  sidebarTextColor: nvarchar("sidebar_text_color", { length: 20 }),
+  quickLinks: jsonTextColumn<Array<{ label: string; url: string; icon: string }>>("quick_links", "[]"),
+  contactEmail: nvarchar("contact_email", { length: 255 }),
+  supportEmail: nvarchar("support_email", { length: 255 }),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
 });
 
 export const insertTenantSchema = createInsertSchema(tenantsTable).omit({ id: true, createdAt: true, updatedAt: true });

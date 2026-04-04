@@ -1,27 +1,28 @@
-import { pgTable, serial, text, boolean, timestamp, integer, varchar } from "drizzle-orm/pg-core";
+import { mssqlTable, int, nvarchar } from "drizzle-orm/mssql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
+import { boolColumn, createdAtColumn, idColumn, jsonTextColumn, updatedAtColumn } from "./_shared";
 
 export const documentTypeEnum = ["manual", "tutorial", "video", "faq", "link", "other"] as const;
 export type DocumentType = typeof documentTypeEnum[number];
 
-export const documentsTable = pgTable("documents", {
-  id: serial("id").primaryKey(),
-  title: varchar("title", { length: 500 }).notNull(),
-  description: text("description"),
-  type: varchar("type", { length: 50 }).notNull().default("other"),
-  category: varchar("category", { length: 255 }),
-  url: text("url"),
-  content: text("content"),
-  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
-  tags: text("tags").array().notNull().default([]),
-  visibleToRoles: text("visible_to_roles").array().notNull().default(["usuario_cliente", "visor_cliente", "tecnico", "admin_cliente", "superadmin"]),
-  published: boolean("published").notNull().default(false),
-  createdById: integer("created_by_id").notNull().references(() => usersTable.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+export const documentsTable = mssqlTable("SOP_documents", {
+  id: idColumn(),
+  title: nvarchar("title", { length: 500 }).notNull(),
+  description: nvarchar("description", { length: "max" }),
+  type: nvarchar("type", { length: 50 }).notNull().default("other"),
+  category: nvarchar("category", { length: 255 }),
+  url: nvarchar("url", { length: "max" }),
+  content: nvarchar("content", { length: "max" }),
+  tenantId: int("tenant_id").notNull().references(() => tenantsTable.id),
+  tags: jsonTextColumn<string[]>("tags", "[]"),
+  visibleToRoles: jsonTextColumn<string[]>("visible_to_roles", '["usuario_cliente","visor_cliente","tecnico","admin_cliente","superadmin"]'),
+  published: boolColumn("published", false),
+  createdById: int("created_by_id").notNull().references(() => usersTable.id),
+  createdAt: createdAtColumn(),
+  updatedAt: updatedAtColumn(),
 });
 
 export const insertDocumentSchema = createInsertSchema(documentsTable).omit({ id: true, createdAt: true, updatedAt: true });

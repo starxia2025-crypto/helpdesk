@@ -5,9 +5,11 @@ import { Readable } from "node:stream";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { documentsTable, tenantsTable, usersTable } from "@workspace/db/schema";
-import { eq, ilike, and, count, sql } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
 import { createAuditLog } from "../lib/audit.js";
+import { parseDbJson, stringifyDbJson } from "../lib/db-json.js";
+import { containsInsensitive, jsonArrayContains } from "../lib/db-search.js";
 
 const router = Router();
 const storageRoot = path.resolve(process.env["DOCUMENTS_STORAGE_ROOT"] || "/app/storage");
@@ -39,6 +41,22 @@ const updateDocumentSchema = z.object({
   visibleToRoles: z.array(z.string()).optional(),
   published: z.boolean().optional(),
 });
+
+function parseRoles(value: unknown) {
+  return parseDbJson<string[]>(value, []);
+}
+
+function parseTags(value: unknown) {
+  return parseDbJson<string[]>(value, []);
+}
+
+function normalizeDocument(doc: any) {
+  return {
+    ...doc,
+    tags: parseTags(doc.tags),
+    visibleToRoles: parseRoles(doc.visibleToRoles),
+  };
+}
 
 router.post("/upload", requireAuth, requireRole("superadmin", "admin_cliente", "tecnico", "manager", "visor_cliente"), async (req, res) => {
   const authUser = (req as any).user;
@@ -111,25 +129,20 @@ router.get("/", requireAuth, async (req, res) => {
   const type = req.query["type"] as string | undefined;
   let tenantId = req.query["tenantId"] ? Number(req.query["tenantId"]) : undefined;
 
-  // Tenant isolation
   if (authUser.role !== "superadmin" && authUser.role !== "tecnico") {
     tenantId = authUser.tenantId ?? undefined;
   }
 
   const conditions = [];
   if (tenantId) conditions.push(eq(documentsTable.tenantId, tenantId));
-  if (search) conditions.push(ilike(documentsTable.title, `%${search}%`));
+  if (search) conditions.push(containsInsensitive(documentsTable.title, search));
   if (category) conditions.push(eq(documentsTable.category, category));
   if (type) conditions.push(eq(documentsTable.type, type));
-
-  // Non-admin only see published documents
   if (!["superadmin", "admin_cliente", "visor_cliente"].includes(authUser.role)) {
     conditions.push(eq(documentsTable.published, true));
   }
-
-  // Role visibility filter
   if (authUser.role !== "superadmin") {
-    conditions.push(sql`${documentsTable.visibleToRoles} @> ARRAY[${authUser.role}]::text[]`);
+    conditions.push(jsonArrayContains(documentsTable.visibleToRoles, authUser.role));
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -165,7 +178,7 @@ router.get("/", requireAuth, async (req, res) => {
   ]);
 
   const total = Number(totalResult[0]?.count ?? 0);
-  res.json({ data: docs, total, page, limit, totalPages: Math.ceil(total / limit) });
+  res.json({ data: docs.map(normalizeDocument), total, page, limit, totalPages: Math.ceil(total / limit) });
 });
 
 router.post("/", requireAuth, requireRole("superadmin", "admin_cliente", "tecnico", "manager", "visor_cliente"), async (req, res) => {
@@ -183,6 +196,8 @@ router.post("/", requireAuth, requireRole("superadmin", "admin_cliente", "tecnic
 
   const doc = await db.insert(documentsTable).values({
     ...parsed.data,
+    tags: stringifyDbJson(parsed.data.tags),
+    visibleToRoles: stringifyDbJson(parsed.data.visibleToRoles),
     createdById: authUser.userId,
   }).returning();
 
@@ -199,7 +214,7 @@ router.post("/", requireAuth, requireRole("superadmin", "admin_cliente", "tecnic
   const creator = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, authUser.userId)).limit(1);
 
   res.status(201).json({
-    ...doc[0],
+    ...normalizeDocument(doc[0]),
     tenantName: tenant[0]?.name ?? "",
     createdByName: creator[0]?.name ?? "",
   });
@@ -245,7 +260,7 @@ router.get("/:documentId", requireAuth, async (req, res) => {
     return;
   }
 
-  res.json(doc);
+  res.json(normalizeDocument(doc));
 });
 
 router.patch("/:documentId", requireAuth, requireRole("superadmin", "admin_cliente", "tecnico", "manager", "visor_cliente"), async (req, res) => {
@@ -269,9 +284,13 @@ router.patch("/:documentId", requireAuth, requireRole("superadmin", "admin_clien
     return;
   }
 
+  const updateValues: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  if (parsed.data.tags !== undefined) updateValues["tags"] = stringifyDbJson(parsed.data.tags);
+  if (parsed.data.visibleToRoles !== undefined) updateValues["visibleToRoles"] = stringifyDbJson(parsed.data.visibleToRoles);
+
   const updated = await db
     .update(documentsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set(updateValues as any)
     .where(eq(documentsTable.id, documentId))
     .returning();
 
@@ -279,7 +298,7 @@ router.patch("/:documentId", requireAuth, requireRole("superadmin", "admin_clien
   const creator = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, doc.createdById)).limit(1);
 
   res.json({
-    ...updated[0],
+    ...normalizeDocument(updated[0]),
     tenantName: tenant[0]?.name ?? "",
     createdByName: creator[0]?.name ?? "",
   });

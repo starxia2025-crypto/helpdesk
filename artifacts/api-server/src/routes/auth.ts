@@ -11,6 +11,7 @@ import {
   SESSION_COOKIE,
 } from "../lib/auth.js";
 import { createAuditLog } from "../lib/audit.js";
+import { parseDbJson } from "../lib/db-json.js";
 
 const router = Router();
 
@@ -45,7 +46,7 @@ async function buildUserResponse(user: typeof usersTable.$inferSelect) {
     tenantPrimaryColor = tenants[0]?.primaryColor ?? null;
     tenantSidebarBackgroundColor = tenants[0]?.sidebarBackgroundColor ?? null;
     tenantSidebarTextColor = tenants[0]?.sidebarTextColor ?? null;
-    tenantQuickLinks = tenants[0]?.quickLinks ?? [];
+    tenantQuickLinks = parseDbJson<Array<{ label: string; url: string; icon: string }>>(tenants[0]?.quickLinks, []);
   }
   return {
     id: user.id,

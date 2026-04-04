@@ -1,14 +1,11 @@
 import { defineConfig } from "drizzle-kit";
 import path from "path";
-
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL, ensure the database is provisioned");
-}
+import { getSqlServerConnectionString } from "./src/sqlserver-env";
 
 export default defineConfig({
   schema: path.join(__dirname, "./src/schema/index.ts"),
-  dialect: "postgresql",
+  dialect: "mssql",
   dbCredentials: {
-    url: process.env.DATABASE_URL,
+    url: getSqlServerConnectionString(),
   },
 });

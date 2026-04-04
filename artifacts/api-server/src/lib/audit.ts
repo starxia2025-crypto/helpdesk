@@ -1,5 +1,6 @@
 import { db } from "@workspace/db";
 import { auditLogsTable } from "@workspace/db/schema";
+import { stringifyDbJson } from "./db-json.js";
 
 export async function createAuditLog(params: {
   action: string;
@@ -17,8 +18,8 @@ export async function createAuditLog(params: {
       entityId: params.entityId,
       userId: params.userId,
       tenantId: params.tenantId ?? null,
-      oldValues: params.oldValues ?? null,
-      newValues: params.newValues ?? null,
+      oldValues: stringifyDbJson(params.oldValues ?? null),
+      newValues: stringifyDbJson(params.newValues ?? null),
     });
   } catch (err) {
     // Audit log failure should not block the main operation

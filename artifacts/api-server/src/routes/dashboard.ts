@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { ticketsTable, usersTable, tenantsTable, auditLogsTable } from "@workspace/db/schema";
-import { eq, count, sql, and, gte, lte, desc, ne } from "drizzle-orm";
+import { eq, count, sql, and, gte, lte, desc } from "drizzle-orm";
 import { requireAuth, requireRole } from "../lib/auth.js";
+import { parseDbJson } from "../lib/db-json.js";
 
 const router = Router();
 
@@ -46,15 +47,13 @@ router.get("/stats", requireAuth, requireRole("superadmin", "admin_cliente", "ma
   ] = await Promise.all([
     db.select({ count: count() }).from(ticketsTable).where(where),
     db.select({ count: count() }).from(ticketsTable).where(and(where, eq(ticketsTable.status, "nuevo"))),
-    db.select({ count: count() }).from(ticketsTable).where(
-      and(where, sql`${ticketsTable.status} NOT IN ('resuelto', 'cerrado')`)
-    ),
+    db.select({ count: count() }).from(ticketsTable).where(and(where, sql`${ticketsTable.status} NOT IN ('resuelto', 'cerrado')`)),
     db.select({ count: count() }).from(ticketsTable).where(and(where, eq(ticketsTable.status, "resuelto"))),
     db.select({ count: count() }).from(ticketsTable).where(and(where, eq(ticketsTable.status, "cerrado"))),
     db.select({ count: count() }).from(ticketsTable).where(and(where, eq(ticketsTable.status, "pendiente"))),
     db.select({ count: count() }).from(ticketsTable).where(and(where, eq(ticketsTable.priority, "urgente"))),
     db
-      .select({ avgMs: sql<number>`AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600)` })
+      .select({ avgHours: sql<number>`AVG(DATEDIFF(second, ${ticketsTable.createdAt}, ${ticketsTable.resolvedAt}) / 3600.0)` })
       .from(ticketsTable)
       .where(and(where, sql`${ticketsTable.resolvedAt} IS NOT NULL`)),
     db.select({ count: count() }).from(tenantsTable),
@@ -70,7 +69,7 @@ router.get("/stats", requireAuth, requireRole("superadmin", "admin_cliente", "ma
     closedTickets: Number(closedResult[0]?.count ?? 0),
     pendingTickets: Number(pendingResult[0]?.count ?? 0),
     urgentTickets: Number(urgentResult[0]?.count ?? 0),
-    avgResolutionHours: resolvedWithTimeResult[0]?.avgMs ?? null,
+    avgResolutionHours: resolvedWithTimeResult[0]?.avgHours ?? null,
     totalTenants: Number(tenantsResult[0]?.count ?? 0),
     totalUsers: Number(usersResult[0]?.count ?? 0),
     totalTechnicians: Number(techResult[0]?.count ?? 0),
@@ -85,27 +84,19 @@ router.get("/tickets-by-status", requireAuth, requireRole("superadmin", "admin_c
   const conditions = tc ? [tc] : [];
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const result = await db
-    .select({ status: ticketsTable.status, count: count() })
-    .from(ticketsTable)
-    .where(where)
-    .groupBy(ticketsTable.status);
+  const result = await db.select({ status: ticketsTable.status, count: count() }).from(ticketsTable).where(where).groupBy(ticketsTable.status);
 
   const statusLabels: Record<string, string> = {
     nuevo: "Nuevo",
     pendiente: "Pendiente",
-    en_revision: "En Revisión",
+    en_revision: "En Revision",
     en_proceso: "En Proceso",
     esperando_cliente: "Esperando Cliente",
     resuelto: "Resuelto",
     cerrado: "Cerrado",
   };
 
-  res.json(result.map((r) => ({
-    status: r.status,
-    count: Number(r.count),
-    label: statusLabels[r.status] ?? r.status,
-  })));
+  res.json(result.map((r) => ({ status: r.status, count: Number(r.count), label: statusLabels[r.status] ?? r.status })));
 });
 
 router.get("/tickets-by-priority", requireAuth, requireRole("superadmin", "admin_cliente", "manager", "tecnico", "visor_cliente"), async (req, res) => {
@@ -116,11 +107,7 @@ router.get("/tickets-by-priority", requireAuth, requireRole("superadmin", "admin
   const conditions = tc ? [tc] : [];
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const result = await db
-    .select({ priority: ticketsTable.priority, count: count() })
-    .from(ticketsTable)
-    .where(where)
-    .groupBy(ticketsTable.priority);
+  const result = await db.select({ priority: ticketsTable.priority, count: count() }).from(ticketsTable).where(where).groupBy(ticketsTable.priority);
 
   const priorityLabels: Record<string, string> = {
     baja: "Baja",
@@ -129,11 +116,7 @@ router.get("/tickets-by-priority", requireAuth, requireRole("superadmin", "admin
     urgente: "Urgente",
   };
 
-  res.json(result.map((r) => ({
-    priority: r.priority,
-    count: Number(r.count),
-    label: priorityLabels[r.priority] ?? r.priority,
-  })));
+  res.json(result.map((r) => ({ priority: r.priority, count: Number(r.count), label: priorityLabels[r.priority] ?? r.priority })));
 });
 
 router.get("/tickets-over-time", requireAuth, requireRole("superadmin", "admin_cliente", "manager", "tecnico", "visor_cliente"), async (req, res) => {
@@ -153,37 +136,35 @@ router.get("/tickets-over-time", requireAuth, requireRole("superadmin", "admin_c
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const truncFormat = period === "day" ? "day" : period === "week" ? "week" : "month";
+  const bucket = period === "day"
+    ? sql<string>`CONVERT(varchar(10), ${ticketsTable.createdAt}, 23)`
+    : period === "week"
+      ? sql<string>`CONCAT(DATEPART(year, ${ticketsTable.createdAt}), '-W', RIGHT(CONCAT('0', DATEPART(iso_week, ${ticketsTable.createdAt})), 2))`
+      : sql<string>`CONCAT(DATEPART(year, ${ticketsTable.createdAt}), '-', RIGHT(CONCAT('0', DATEPART(month, ${ticketsTable.createdAt})), 2))`;
+
+  const resolvedBucket = period === "day"
+    ? sql<string>`CONVERT(varchar(10), ${ticketsTable.resolvedAt}, 23)`
+    : period === "week"
+      ? sql<string>`CONCAT(DATEPART(year, ${ticketsTable.resolvedAt}), '-W', RIGHT(CONCAT('0', DATEPART(iso_week, ${ticketsTable.resolvedAt})), 2))`
+      : sql<string>`CONCAT(DATEPART(year, ${ticketsTable.resolvedAt}), '-', RIGHT(CONCAT('0', DATEPART(month, ${ticketsTable.resolvedAt})), 2))`;
 
   const created = await db
-    .select({
-      date: sql<string>`DATE_TRUNC('${sql.raw(truncFormat)}', created_at)::date`,
-      count: count(),
-    })
+    .select({ date: bucket, count: count() })
     .from(ticketsTable)
     .where(where)
-    .groupBy(sql`DATE_TRUNC('${sql.raw(truncFormat)}', created_at)`)
-    .orderBy(sql`DATE_TRUNC('${sql.raw(truncFormat)}', created_at)`);
+    .groupBy(bucket)
+    .orderBy(bucket);
 
   const resolved = await db
-    .select({
-      date: sql<string>`DATE_TRUNC('${sql.raw(truncFormat)}', resolved_at)::date`,
-      count: count(),
-    })
+    .select({ date: resolvedBucket, count: count() })
     .from(ticketsTable)
-    .where(and(where, sql`resolved_at IS NOT NULL`))
-    .groupBy(sql`DATE_TRUNC('${sql.raw(truncFormat)}', resolved_at)`)
-    .orderBy(sql`DATE_TRUNC('${sql.raw(truncFormat)}', resolved_at)`);
+    .where(and(where, sql`${ticketsTable.resolvedAt} IS NOT NULL`))
+    .groupBy(resolvedBucket)
+    .orderBy(resolvedBucket);
 
   const resolvedMap = new Map(resolved.map((r) => [String(r.date), Number(r.count)]));
 
-  res.json(
-    created.map((c) => ({
-      date: String(c.date),
-      created: Number(c.count),
-      resolved: resolvedMap.get(String(c.date)) ?? 0,
-    }))
-  );
+  res.json(created.map((c) => ({ date: String(c.date), created: Number(c.count), resolved: resolvedMap.get(String(c.date)) ?? 0 })));
 });
 
 router.get("/tickets-by-technician", requireAuth, requireRole("superadmin", "admin_cliente", "manager", "tecnico", "visor_cliente"), async (req, res) => {
@@ -207,12 +188,7 @@ router.get("/tickets-by-technician", requireAuth, requireRole("superadmin", "adm
     .groupBy(ticketsTable.assignedToId, usersTable.name)
     .orderBy(desc(count()));
 
-  res.json(result.map((r) => ({
-    userId: r.userId ?? 0,
-    userName: r.userName ?? "Sin asignar",
-    count: Number(r.count),
-    resolved: Number(r.resolved),
-  })));
+  res.json(result.map((r) => ({ userId: r.userId ?? 0, userName: r.userName ?? "Sin asignar", count: Number(r.count), resolved: Number(r.resolved) })));
 });
 
 router.get("/recent-activity", requireAuth, requireRole("superadmin", "admin_cliente", "manager", "tecnico", "visor_cliente"), async (req, res) => {
@@ -247,19 +223,20 @@ router.get("/recent-activity", requireAuth, requireRole("superadmin", "admin_cli
     .orderBy(desc(auditLogsTable.createdAt))
     .limit(limit);
 
-  res.json(
-    logs.map((l) => ({
+  res.json(logs.map((l) => {
+    const values = parseDbJson<Record<string, unknown> | null>(l.newValues, null);
+    return {
       id: l.id,
       action: l.action,
       entityType: l.entityType,
       entityId: l.entityId,
-      entityTitle: (l.newValues as any)?.title ?? null,
+      entityTitle: values && typeof values === "object" ? (values as any).title ?? null : null,
       userId: l.userId,
       userName: l.userName ?? "Unknown",
       tenantName: l.tenantName ?? null,
       createdAt: l.createdAt,
-    }))
-  );
+    };
+  }));
 });
 
 router.get("/top-categories", requireAuth, requireRole("superadmin", "admin_cliente", "manager", "tecnico", "visor_cliente"), async (req, res) => {
