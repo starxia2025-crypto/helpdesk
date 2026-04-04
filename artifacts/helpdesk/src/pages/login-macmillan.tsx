@@ -1,4 +1,4 @@
-import { useLocation } from "wouter";
+ï»¿import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,8 +12,8 @@ import { getDefaultRouteForRole } from "@/lib/default-route";
 import meeLogo from "@/assets/mee-logo.svg";
 
 const loginSchema = z.object({
-  email: z.string().email("Introduce un correo electrónico válido"),
-  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  email: z.string().email("Introduce un correo electrÃ³nico vÃ¡lido"),
+  password: z.string().min(6, "La contraseÃ±a debe tener al menos 6 caracteres"),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -34,6 +34,20 @@ export default function MacmillanLogin() {
 
   function onSubmit(data: LoginFormValues) {
     loginMutation.mutate({ data });
+  }
+
+  function getLoginErrorMessage() {
+    const rawMessage = loginMutation.error?.message || "";
+
+    if (rawMessage.includes("401") || rawMessage.toLowerCase().includes("credenciales incorrectas")) {
+      return "El correo o la contraseÃ±a no son correctos. Revisa tus datos e intÃ©ntalo de nuevo.";
+    }
+
+    if (rawMessage.toLowerCase().includes("failed to fetch")) {
+      return "No se pudo conectar con el servidor. IntÃ©ntalo de nuevo en unos segundos.";
+    }
+
+    return "No se pudo iniciar sesiÃ³n. Revisa tus datos e intÃ©ntalo de nuevo.";
   }
 
   return (
@@ -80,7 +94,7 @@ export default function MacmillanLogin() {
         </div>
 
         <div className="relative z-10 text-sm text-primary-foreground/60">
-          © {new Date().getFullYear()} Macmillan Iberia. Todos los derechos reservados.
+          Â© {new Date().getFullYear()} Macmillan Iberia. Todos los derechos reservados.
         </div>
       </div>
 
@@ -104,14 +118,14 @@ export default function MacmillanLogin() {
               <span className="text-xl font-bold text-slate-900 dark:text-white">Soporte Macmillan</span>
             </div>
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Bienvenido</h2>
-            <p className="mt-2 text-slate-500">Inicia sesión para continuar</p>
+            <p className="mt-2 text-slate-500">Inicia sesiÃ³n para continuar</p>
           </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {loginMutation.isError && (
                 <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm font-medium text-destructive">
-                  {loginMutation.error?.message || "Correo o contraseña incorrectos. Inténtalo de nuevo."}
+                  {getLoginErrorMessage()}
                 </div>
               )}
 
@@ -121,7 +135,7 @@ export default function MacmillanLogin() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Correo electrónico</FormLabel>
+                      <FormLabel>Correo electrÃ³nico</FormLabel>
                       <FormControl>
                         <Input placeholder="nombre@escuela.edu" {...field} className="h-11" />
                       </FormControl>
@@ -136,11 +150,11 @@ export default function MacmillanLogin() {
                   render={({ field }) => (
                     <FormItem>
                       <div className="flex items-center justify-between">
-                        <FormLabel>Contraseña</FormLabel>
-                        <a href="#" className="text-sm font-medium text-primary hover:underline">¿Olvidaste tu contraseña?</a>
+                        <FormLabel>ContraseÃ±a</FormLabel>
+                        <a href="#" className="text-sm font-medium text-primary hover:underline">Â¿Olvidaste tu contraseÃ±a?</a>
                       </div>
                       <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} className="h-11" />
+                        <Input type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" {...field} className="h-11" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -152,10 +166,10 @@ export default function MacmillanLogin() {
                 {loginMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Iniciando sesión...
+                    Iniciando sesiÃ³n...
                   </>
                 ) : (
-                  "Iniciar sesión"
+                  "Iniciar sesiÃ³n"
                 )}
               </Button>
             </form>
@@ -165,3 +179,4 @@ export default function MacmillanLogin() {
     </div>
   );
 }
+
