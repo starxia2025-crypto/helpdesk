@@ -114,10 +114,11 @@ export default function PortalAdmin() {
   });
 
   const canManageContent = ["superadmin", "admin_cliente", "tecnico", "manager"].includes(user?.role || "");
+  const documents = docsData?.data ?? [];
 
   const categories = useMemo(
-    () => ["all", ...Array.from(new Set(docsData?.data.map((doc) => doc.category).filter(Boolean) as string[]))],
-    [docsData?.data],
+    () => ["all", ...Array.from(new Set(documents.map((doc) => doc.category).filter(Boolean) as string[]))],
+    [documents],
   );
 
   function resetComposer() {
@@ -390,7 +391,7 @@ export default function PortalAdmin() {
             <div className="grid gap-4 sm:grid-cols-2">
               {[1, 2, 3, 4].map((i) => <div key={i} className="h-32 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />)}
             </div>
-          ) : docsData?.data.length === 0 ? (
+          ) : documents.length === 0 ? (
             <div className="rounded-xl border border-dashed bg-slate-50 py-20 text-center dark:bg-slate-900/50">
               <HelpCircle className="mx-auto mb-4 h-12 w-12 text-slate-300" />
               <h3 className="mb-1 text-lg font-medium text-slate-900 dark:text-white">No se encontraron articulos</h3>
@@ -398,7 +399,7 @@ export default function PortalAdmin() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
-              {docsData.data.map((doc) => {
+              {documents.map((doc) => {
                 const isDownloadableFile = !!doc.url?.includes("/uploads/documents/");
                 return (
                   <a

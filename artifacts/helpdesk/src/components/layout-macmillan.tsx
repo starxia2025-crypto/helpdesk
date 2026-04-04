@@ -53,7 +53,7 @@ export function MacmillanLayout({ children }: { children: React.ReactNode }) {
     { href: "/tickets", label: "Tickets de consulta", icon: Ticket, roles: ["superadmin", "admin_cliente", "tecnico", "usuario_cliente", "visor_cliente"] },
     { href: "/portal", label: "Centro de ayuda", icon: BookOpen, roles: ["superadmin", "admin_cliente", "manager", "tecnico", "usuario_cliente", "visor_cliente"] },
     { href: "/clients", label: "Colegios", icon: Building2, roles: ["superadmin", "tecnico"] },
-    { href: "/users", label: "Usuarios", icon: UsersIcon, roles: ["superadmin", "admin_cliente", "tecnico", "visor_cliente"] },
+    { href: "/users", label: "Usuarios", icon: UsersIcon, roles: ["superadmin", "admin_cliente", "tecnico"] },
     { href: "/audit", label: "Auditoria", icon: ActivitySquare, roles: ["superadmin", "tecnico"] },
   ].filter((item) => item.roles.includes(user.role));
 

@@ -20,7 +20,6 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-// Helper to build user response
 async function buildUserResponse(user: typeof usersTable.$inferSelect) {
   let tenantName: string | null = null;
   let tenantSlug: string | null = null;
@@ -28,6 +27,7 @@ async function buildUserResponse(user: typeof usersTable.$inferSelect) {
   let tenantSidebarBackgroundColor: string | null = null;
   let tenantSidebarTextColor: string | null = null;
   let tenantQuickLinks: Array<{ label: string; url: string; icon: string }> = [];
+
   if (user.tenantId) {
     const tenants = await db
       .select({
@@ -38,9 +38,10 @@ async function buildUserResponse(user: typeof usersTable.$inferSelect) {
         sidebarTextColor: tenantsTable.sidebarTextColor,
         quickLinks: tenantsTable.quickLinks,
       })
+      .top(1)
       .from(tenantsTable)
-      .where(eq(tenantsTable.id, user.tenantId))
-      .limit(1);
+      .where(eq(tenantsTable.id, user.tenantId));
+
     tenantName = tenants[0]?.name ?? null;
     tenantSlug = tenants[0]?.slug ?? null;
     tenantPrimaryColor = tenants[0]?.primaryColor ?? null;
@@ -48,6 +49,7 @@ async function buildUserResponse(user: typeof usersTable.$inferSelect) {
     tenantSidebarTextColor = tenants[0]?.sidebarTextColor ?? null;
     tenantQuickLinks = parseDbJson<Array<{ label: string; url: string; icon: string }>>(tenants[0]?.quickLinks, []);
   }
+
   return {
     id: user.id,
     email: user.email,
@@ -68,16 +70,17 @@ async function buildUserResponse(user: typeof usersTable.$inferSelect) {
 router.post("/login", async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "ValidationError", message: "Datos de solicitud no válidos" });
+    res.status(400).json({ error: "ValidationError", message: "Datos de solicitud no validos" });
     return;
   }
+
   const { email, password } = parsed.data;
 
   const users = await db
     .select()
+    .top(1)
     .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()))
-    .limit(1);
+    .where(eq(usersTable.email, email.toLowerCase()));
 
   const user = users[0];
   if (!user || !user.active) {
@@ -119,16 +122,16 @@ router.post("/logout", requireAuth, async (req, res) => {
     await deleteSession(token);
   }
   res.clearCookie(SESSION_COOKIE);
-  res.json({ message: "Sesión cerrada" });
+  res.json({ message: "Sesion cerrada" });
 });
 
 router.get("/me", requireAuth, async (req, res) => {
   const authUser = (req as any).user;
   const users = await db
     .select()
+    .top(1)
     .from(usersTable)
-    .where(eq(usersTable.id, authUser.userId))
-    .limit(1);
+    .where(eq(usersTable.id, authUser.userId));
 
   const user = users[0];
   if (!user) {
@@ -139,18 +142,15 @@ router.get("/me", requireAuth, async (req, res) => {
   res.json(await buildUserResponse(user));
 });
 
-// ─── Microsoft OAuth ──────────────────────────────────────────────────────────
-
 router.get("/microsoft", (req, res) => {
   const clientId = process.env.MICROSOFT_CLIENT_ID;
   const tenantId = process.env.MICROSOFT_TENANT_ID || "common";
-  const redirectUri = process.env.MICROSOFT_REDIRECT_URI ||
-    `${req.protocol}://${req.headers.host}/api/auth/microsoft/callback`;
+  const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${req.protocol}://${req.headers.host}/api/auth/microsoft/callback`;
 
   if (!clientId) {
     res.status(503).json({
       error: "NotConfigured",
-      message: "Microsoft OAuth no está configurado. Añade MICROSOFT_CLIENT_ID y MICROSOFT_CLIENT_SECRET como variables de entorno.",
+      message: "Microsoft OAuth no esta configurado. Anade MICROSOFT_CLIENT_ID y MICROSOFT_CLIENT_SECRET como variables de entorno.",
     });
     return;
   }
@@ -172,8 +172,7 @@ router.get("/microsoft/callback", async (req, res) => {
   const clientId = process.env.MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
   const tenantId = process.env.MICROSOFT_TENANT_ID || "common";
-  const redirectUri = process.env.MICROSOFT_REDIRECT_URI ||
-    `${req.protocol}://${req.headers.host}/api/auth/microsoft/callback`;
+  const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${req.protocol}://${req.headers.host}/api/auth/microsoft/callback`;
   const frontendUrl = process.env.FRONTEND_URL || "/";
 
   if (oauthError || !code) {
@@ -187,21 +186,17 @@ router.get("/microsoft/callback", async (req, res) => {
   }
 
   try {
-    // Exchange code for tokens
-    const tokenRes = await fetch(
-      `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: clientId,
-          client_secret: clientSecret,
-          code,
-          redirect_uri: redirectUri,
-          grant_type: "authorization_code",
-        }),
-      }
-    );
+    const tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    });
 
     const tokenData = await tokenRes.json() as any;
     if (!tokenData.access_token) {
@@ -209,7 +204,6 @@ router.get("/microsoft/callback", async (req, res) => {
       return;
     }
 
-    // Get Microsoft user profile
     const profileRes = await fetch("https://graph.microsoft.com/v1.0/me", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
@@ -223,17 +217,10 @@ router.get("/microsoft/callback", async (req, res) => {
       return;
     }
 
-    // Find or create user
-    let existingUsers = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.email, email))
-      .limit(1);
-
+    const existingUsers = await db.select().top(1).from(usersTable).where(eq(usersTable.email, email));
     let user = existingUsers[0];
 
     if (!user) {
-      // Auto-create as usuario_cliente (no tenant) — admin can assign later
       const created = await db
         .insert(usersTable)
         .values({

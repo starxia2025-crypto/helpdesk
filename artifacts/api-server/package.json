@@ -10,11 +10,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@azure/core-auth": "^1.10.1",
+    "@azure/identity": "^4.13.1",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
+    "dotenv": "^16.6.1",
     "drizzle-orm": "catalog:",
     "express": "^5",
     "express-rate-limit": "^8.3.1",

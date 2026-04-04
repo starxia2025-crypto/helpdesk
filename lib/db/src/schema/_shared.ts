@@ -1,8 +1,10 @@
 import { sql } from "drizzle-orm";
-import { bit, datetime2, int, nvarchar } from "drizzle-orm/mssql-core";
+import { bit, datetime2, int, mssqlSchema, nvarchar } from "drizzle-orm/mssql-core";
+
+export const dboSchema = mssqlSchema("dbo");
 
 export function idColumn(name = "id") {
-  return int(name).primaryKey().generatedAlwaysAsIdentity();
+  return int(name).identity().primaryKey();
 }
 
 export function createdAtColumn(name = "created_at") {

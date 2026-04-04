@@ -1,13 +1,13 @@
-import { mssqlTable, int, nvarchar, datetime2 } from "drizzle-orm/mssql-core";
+import { int, nvarchar, datetime2 } from "drizzle-orm/mssql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
-import { boolColumn, createdAtColumn, idColumn, updatedAtColumn } from "./_shared";
+import { boolColumn, createdAtColumn, dboSchema, idColumn, updatedAtColumn } from "./_shared";
 
 export const userRoleEnum = ["superadmin", "admin_cliente", "manager", "tecnico", "usuario_cliente", "visor_cliente"] as const;
 export type UserRole = typeof userRoleEnum[number];
 
-export const usersTable = mssqlTable("SOP_users", {
+export const usersTable = dboSchema.table("SOP_users", {
   id: idColumn(),
   email: nvarchar("email", { length: 255 }).notNull().unique(),
   name: nvarchar("name", { length: 255 }).notNull(),

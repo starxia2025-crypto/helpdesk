@@ -56,7 +56,7 @@ export default function Dashboard() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Estadísticas de soporte</h1>
-        <p className="text-slate-500 mt-1">Visión agregada de incidencias, tiempos de resolución y carga operativa por cliente.</p>
+        <p className="text-slate-500 mt-1">Visión agregada de incidencias, tiempos de resolución y carga operativa por colegio.</p>
       </div>
 
       {/* Tarjetas KPI */}
@@ -103,7 +103,7 @@ export default function Dashboard() {
         {user?.role === 'superadmin' ? (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-slate-500">Total de Clientes</CardTitle>
+              <CardTitle className="text-sm font-medium text-slate-500">Total de Colegios</CardTitle>
               <Building2 className="h-4 w-4 text-indigo-500" />
             </CardHeader>
             <CardContent>

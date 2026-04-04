@@ -7,6 +7,6 @@ const sqlServerConfig = getSqlServerConfig();
 
 export const pool = new mssql.ConnectionPool(sqlServerConfig);
 export const poolConnect = pool.connect();
-export const db = drizzle(pool, { schema });
+export const db = drizzle({ connection: sqlServerConfig, schema });
 
 export * from "./schema";

@@ -26,6 +26,11 @@ const updateUserSchema = z.object({
   tenantId: z.number().nullable().optional(),
 });
 
+function isSqlServerDuplicateError(error: any) {
+  const sqlServerNumber = error?.number ?? error?.originalError?.info?.number ?? error?.precedingErrors?.[0]?.number;
+  return error?.code === "23505" || error?.code === "2627" || error?.code === "2601" || sqlServerNumber === 2627 || sqlServerNumber === 2601;
+}
+
 router.get("/", requireAuth, async (req, res) => {
   const authUser = (req as any).user;
   const page = Math.max(1, Number(req.query["page"]) || 1);
@@ -50,23 +55,42 @@ router.get("/", requireAuth, async (req, res) => {
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [users, totalResult] = await Promise.all([
-    db.select({
-      id: usersTable.id,
-      email: usersTable.email,
-      name: usersTable.name,
-      role: usersTable.role,
-      tenantId: usersTable.tenantId,
-      active: usersTable.active,
-      createdAt: usersTable.createdAt,
-      lastLoginAt: usersTable.lastLoginAt,
-      tenantName: tenantsTable.name,
-    })
-      .from(usersTable)
-      .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
-      .where(where)
-      .limit(limit)
-      .offset(offset)
-      .orderBy(usersTable.createdAt),
+    (
+      offset > 0
+        ? db.select({
+            id: usersTable.id,
+            email: usersTable.email,
+            name: usersTable.name,
+            role: usersTable.role,
+            tenantId: usersTable.tenantId,
+            active: usersTable.active,
+            createdAt: usersTable.createdAt,
+            lastLoginAt: usersTable.lastLoginAt,
+            tenantName: tenantsTable.name,
+          })
+            .from(usersTable)
+            .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+            .where(where)
+            .orderBy(usersTable.createdAt)
+            .offset(offset)
+            .fetch(limit)
+        : db.select({
+            id: usersTable.id,
+            email: usersTable.email,
+            name: usersTable.name,
+            role: usersTable.role,
+            tenantId: usersTable.tenantId,
+            active: usersTable.active,
+            createdAt: usersTable.createdAt,
+            lastLoginAt: usersTable.lastLoginAt,
+            tenantName: tenantsTable.name,
+          })
+            .top(limit)
+            .from(usersTable)
+            .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+            .where(where)
+            .orderBy(usersTable.createdAt)
+    ),
     db.select({ count: count() }).from(usersTable).where(where),
   ]);
 
@@ -96,27 +120,48 @@ router.post("/", requireAuth, requireRole("superadmin", "admin_cliente", "tecnic
 
   try {
     const passwordHash = await hashPassword(parsed.data.password);
-    const user = await db.insert(usersTable).values({
+    await db.insert(usersTable).values({
       email: parsed.data.email.toLowerCase(),
       name: parsed.data.name,
       role: parsed.data.role,
       tenantId: parsed.data.tenantId ?? null,
       passwordHash,
-    }).returning();
+    });
+
+    const createdUsers = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        role: usersTable.role,
+        tenantId: usersTable.tenantId,
+        active: usersTable.active,
+        createdAt: usersTable.createdAt,
+        lastLoginAt: usersTable.lastLoginAt,
+        tenantName: tenantsTable.name,
+      })
+      .top(1)
+      .from(usersTable)
+      .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+      .where(eq(usersTable.email, parsed.data.email.toLowerCase()));
+
+    const createdUser = createdUsers[0];
+    if (!createdUser) {
+      throw new Error("User insert succeeded but could not be reloaded.");
+    }
 
     await createAuditLog({
       action: "create",
       entityType: "user",
-      entityId: user[0]!.id,
+      entityId: createdUser.id,
       userId: authUser.userId,
       tenantId: parsed.data.tenantId ?? null,
       newValues: { email: parsed.data.email, name: parsed.data.name, role: parsed.data.role },
     });
 
-    const { passwordHash: _, ...safeUser } = user[0]!;
-    res.status(201).json({ ...safeUser, tenantName: null });
+    res.status(201).json(createdUser);
   } catch (error: any) {
-    if (error?.code === "23505" || error?.code === "2627" || error?.code === "2601") {
+    if (isSqlServerDuplicateError(error)) {
       res.status(409).json({ error: "Conflict", message: "Ya existe un usuario con ese correo." });
       return;
     }
@@ -142,10 +187,10 @@ router.get("/:userId", requireAuth, async (req, res) => {
       lastLoginAt: usersTable.lastLoginAt,
       tenantName: tenantsTable.name,
     })
+    .top(1)
     .from(usersTable)
     .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
-    .where(eq(usersTable.id, userId))
-    .limit(1);
+    .where(eq(usersTable.id, userId));
 
   const user = users[0];
   if (!user) {
@@ -173,7 +218,7 @@ router.patch("/:userId", requireAuth, requireRole("superadmin", "admin_cliente",
     return;
   }
 
-  const users = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const users = await db.select().top(1).from(usersTable).where(eq(usersTable.id, userId));
   const user = users[0];
   if (!user) {
     res.status(404).json({ error: "NotFound", message: "User not found" });
@@ -197,11 +242,33 @@ router.patch("/:userId", requireAuth, requireRole("superadmin", "admin_cliente",
     }
   }
 
-  const updated = await db
+  await db
     .update(usersTable)
     .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(usersTable.id, userId))
-    .returning();
+    .where(eq(usersTable.id, userId));
+
+  const updatedUsers = await db
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      name: usersTable.name,
+      role: usersTable.role,
+      tenantId: usersTable.tenantId,
+      active: usersTable.active,
+      createdAt: usersTable.createdAt,
+      lastLoginAt: usersTable.lastLoginAt,
+      tenantName: tenantsTable.name,
+    })
+    .top(1)
+    .from(usersTable)
+    .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
+    .where(eq(usersTable.id, userId));
+
+  const updatedUser = updatedUsers[0];
+  if (!updatedUser) {
+    res.status(404).json({ error: "NotFound", message: "User not found after update" });
+    return;
+  }
 
   await createAuditLog({
     action: "update",
@@ -213,12 +280,7 @@ router.patch("/:userId", requireAuth, requireRole("superadmin", "admin_cliente",
     newValues: parsed.data,
   });
 
-  const { passwordHash, ...safeUser } = updated[0]!;
-  const tenants = user.tenantId
-    ? await db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, user.tenantId)).limit(1)
-    : [];
-
-  res.json({ ...safeUser, tenantName: tenants[0]?.name ?? null });
+  res.json(updatedUser);
 });
 
 export default router;

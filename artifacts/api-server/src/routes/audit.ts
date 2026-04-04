@@ -42,25 +42,46 @@ router.get("/", requireAuth, requireRole("superadmin", "admin_cliente", "tecnico
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [logs, totalResult] = await Promise.all([
-    db
-      .select({
-        id: auditLogsTable.id,
-        action: auditLogsTable.action,
-        entityType: auditLogsTable.entityType,
-        entityId: auditLogsTable.entityId,
-        userId: auditLogsTable.userId,
-        userName: usersTable.name,
-        tenantId: auditLogsTable.tenantId,
-        oldValues: auditLogsTable.oldValues,
-        newValues: auditLogsTable.newValues,
-        createdAt: auditLogsTable.createdAt,
-      })
-      .from(auditLogsTable)
-      .leftJoin(usersTable, eq(auditLogsTable.userId, usersTable.id))
-      .where(where)
-      .limit(limit)
-      .offset(offset)
-      .orderBy(desc(auditLogsTable.createdAt)),
+    (
+      offset > 0
+        ? db
+            .select({
+              id: auditLogsTable.id,
+              action: auditLogsTable.action,
+              entityType: auditLogsTable.entityType,
+              entityId: auditLogsTable.entityId,
+              userId: auditLogsTable.userId,
+              userName: usersTable.name,
+              tenantId: auditLogsTable.tenantId,
+              oldValues: auditLogsTable.oldValues,
+              newValues: auditLogsTable.newValues,
+              createdAt: auditLogsTable.createdAt,
+            })
+            .from(auditLogsTable)
+            .leftJoin(usersTable, eq(auditLogsTable.userId, usersTable.id))
+            .where(where)
+            .orderBy(desc(auditLogsTable.createdAt))
+            .offset(offset)
+            .fetch(limit)
+        : db
+            .select({
+              id: auditLogsTable.id,
+              action: auditLogsTable.action,
+              entityType: auditLogsTable.entityType,
+              entityId: auditLogsTable.entityId,
+              userId: auditLogsTable.userId,
+              userName: usersTable.name,
+              tenantId: auditLogsTable.tenantId,
+              oldValues: auditLogsTable.oldValues,
+              newValues: auditLogsTable.newValues,
+              createdAt: auditLogsTable.createdAt,
+            })
+            .top(limit)
+            .from(auditLogsTable)
+            .leftJoin(usersTable, eq(auditLogsTable.userId, usersTable.id))
+            .where(where)
+            .orderBy(desc(auditLogsTable.createdAt))
+    ),
     db.select({ count: count() }).from(auditLogsTable).where(where),
   ]);
 

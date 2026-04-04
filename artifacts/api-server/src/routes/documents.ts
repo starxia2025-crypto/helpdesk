@@ -148,32 +148,60 @@ router.get("/", requireAuth, async (req, res) => {
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [docs, totalResult] = await Promise.all([
-    db
-      .select({
-        id: documentsTable.id,
-        title: documentsTable.title,
-        description: documentsTable.description,
-        type: documentsTable.type,
-        category: documentsTable.category,
-        url: documentsTable.url,
-        content: documentsTable.content,
-        tenantId: documentsTable.tenantId,
-        tenantName: tenantsTable.name,
-        tags: documentsTable.tags,
-        visibleToRoles: documentsTable.visibleToRoles,
-        published: documentsTable.published,
-        createdById: documentsTable.createdById,
-        createdByName: usersTable.name,
-        createdAt: documentsTable.createdAt,
-        updatedAt: documentsTable.updatedAt,
-      })
-      .from(documentsTable)
-      .leftJoin(tenantsTable, eq(documentsTable.tenantId, tenantsTable.id))
-      .leftJoin(usersTable, eq(documentsTable.createdById, usersTable.id))
-      .where(where)
-      .limit(limit)
-      .offset(offset)
-      .orderBy(documentsTable.createdAt),
+    (
+      offset > 0
+        ? db
+            .select({
+              id: documentsTable.id,
+              title: documentsTable.title,
+              description: documentsTable.description,
+              type: documentsTable.type,
+              category: documentsTable.category,
+              url: documentsTable.url,
+              content: documentsTable.content,
+              tenantId: documentsTable.tenantId,
+              tenantName: tenantsTable.name,
+              tags: documentsTable.tags,
+              visibleToRoles: documentsTable.visibleToRoles,
+              published: documentsTable.published,
+              createdById: documentsTable.createdById,
+              createdByName: usersTable.name,
+              createdAt: documentsTable.createdAt,
+              updatedAt: documentsTable.updatedAt,
+            })
+            .from(documentsTable)
+            .leftJoin(tenantsTable, eq(documentsTable.tenantId, tenantsTable.id))
+            .leftJoin(usersTable, eq(documentsTable.createdById, usersTable.id))
+            .where(where)
+            .orderBy(documentsTable.createdAt)
+            .offset(offset)
+            .fetch(limit)
+        : db
+            .select({
+              id: documentsTable.id,
+              title: documentsTable.title,
+              description: documentsTable.description,
+              type: documentsTable.type,
+              category: documentsTable.category,
+              url: documentsTable.url,
+              content: documentsTable.content,
+              tenantId: documentsTable.tenantId,
+              tenantName: tenantsTable.name,
+              tags: documentsTable.tags,
+              visibleToRoles: documentsTable.visibleToRoles,
+              published: documentsTable.published,
+              createdById: documentsTable.createdById,
+              createdByName: usersTable.name,
+              createdAt: documentsTable.createdAt,
+              updatedAt: documentsTable.updatedAt,
+            })
+            .top(limit)
+            .from(documentsTable)
+            .leftJoin(tenantsTable, eq(documentsTable.tenantId, tenantsTable.id))
+            .leftJoin(usersTable, eq(documentsTable.createdById, usersTable.id))
+            .where(where)
+            .orderBy(documentsTable.createdAt)
+    ),
     db.select({ count: count() }).from(documentsTable).where(where),
   ]);
 
@@ -210,8 +238,8 @@ router.post("/", requireAuth, requireRole("superadmin", "admin_cliente", "tecnic
     newValues: { title: parsed.data.title, type: parsed.data.type },
   });
 
-  const tenant = await db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, parsed.data.tenantId)).limit(1);
-  const creator = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, authUser.userId)).limit(1);
+  const tenant = await db.select({ name: tenantsTable.name }).top(1).from(tenantsTable).where(eq(tenantsTable.id, parsed.data.tenantId));
+  const creator = await db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, authUser.userId));
 
   res.status(201).json({
     ...normalizeDocument(doc[0]),
@@ -243,11 +271,11 @@ router.get("/:documentId", requireAuth, async (req, res) => {
       createdAt: documentsTable.createdAt,
       updatedAt: documentsTable.updatedAt,
     })
+    .top(1)
     .from(documentsTable)
     .leftJoin(tenantsTable, eq(documentsTable.tenantId, tenantsTable.id))
     .leftJoin(usersTable, eq(documentsTable.createdById, usersTable.id))
-    .where(eq(documentsTable.id, documentId))
-    .limit(1);
+    .where(eq(documentsTable.id, documentId));
 
   const doc = docs[0];
   if (!doc) {
@@ -272,7 +300,7 @@ router.patch("/:documentId", requireAuth, requireRole("superadmin", "admin_clien
     return;
   }
 
-  const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, documentId)).limit(1);
+  const docs = await db.select().top(1).from(documentsTable).where(eq(documentsTable.id, documentId));
   const doc = docs[0];
   if (!doc) {
     res.status(404).json({ error: "NotFound", message: "Document not found" });
@@ -294,8 +322,8 @@ router.patch("/:documentId", requireAuth, requireRole("superadmin", "admin_clien
     .where(eq(documentsTable.id, documentId))
     .returning();
 
-  const tenant = await db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, doc.tenantId)).limit(1);
-  const creator = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, doc.createdById)).limit(1);
+  const tenant = await db.select({ name: tenantsTable.name }).top(1).from(tenantsTable).where(eq(tenantsTable.id, doc.tenantId));
+  const creator = await db.select({ name: usersTable.name }).top(1).from(usersTable).where(eq(usersTable.id, doc.createdById));
 
   res.json({
     ...normalizeDocument(updated[0]),
@@ -308,7 +336,7 @@ router.delete("/:documentId", requireAuth, requireRole("superadmin", "admin_clie
   const documentId = Number(req.params["documentId"]);
   const authUser = (req as any).user;
 
-  const docs = await db.select().from(documentsTable).where(eq(documentsTable.id, documentId)).limit(1);
+  const docs = await db.select().top(1).from(documentsTable).where(eq(documentsTable.id, documentId));
   const doc = docs[0];
   if (!doc) {
     res.status(404).json({ error: "NotFound", message: "Document not found" });

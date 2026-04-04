@@ -1,8 +1,8 @@
-import { mssqlTable, int, nvarchar, datetime2 } from "drizzle-orm/mssql-core";
+import { int, nvarchar, datetime2 } from "drizzle-orm/mssql-core";
 import { usersTable } from "./users";
-import { createdAtColumn, idColumn } from "./_shared";
+import { createdAtColumn, dboSchema, idColumn } from "./_shared";
 
-export const sessionsTable = mssqlTable("SOP_sessions", {
+export const sessionsTable = dboSchema.table("SOP_sessions", {
   id: idColumn(),
   sessionToken: nvarchar("session_token", { length: 255 }).notNull().unique(),
   userId: int("user_id").notNull().references(() => usersTable.id),

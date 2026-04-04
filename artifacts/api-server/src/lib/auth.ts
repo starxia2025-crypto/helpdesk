@@ -19,7 +19,7 @@ export function generateSessionToken(): string {
 
 export async function createSession(userId: number): Promise<string> {
   const token = generateSessionToken();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await db.insert(sessionsTable).values({ sessionToken: token, userId, expiresAt });
   return token;
 }
@@ -34,10 +34,10 @@ export async function getSessionUser(token: string) {
       tenantId: usersTable.tenantId,
       active: usersTable.active,
     })
+    .top(1)
     .from(sessionsTable)
     .innerJoin(usersTable, eq(sessionsTable.userId, usersTable.id))
-    .where(and(eq(sessionsTable.sessionToken, token), gt(sessionsTable.expiresAt, new Date())))
-    .limit(1);
+    .where(and(eq(sessionsTable.sessionToken, token), gt(sessionsTable.expiresAt, new Date())));
   return result[0] ?? null;
 }
 

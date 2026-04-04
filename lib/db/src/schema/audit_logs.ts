@@ -1,11 +1,11 @@
-import { mssqlTable, int, nvarchar } from "drizzle-orm/mssql-core";
+import { int, nvarchar } from "drizzle-orm/mssql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 import { tenantsTable } from "./tenants";
-import { createdAtColumn, idColumn, jsonTextColumn } from "./_shared";
+import { createdAtColumn, dboSchema, idColumn, jsonTextColumn } from "./_shared";
 
-export const auditLogsTable = mssqlTable("SOP_audit_logs", {
+export const auditLogsTable = dboSchema.table("SOP_audit_logs", {
   id: idColumn(),
   action: nvarchar("action", { length: 100 }).notNull(),
   entityType: nvarchar("entity_type", { length: 100 }).notNull(),

@@ -1,14 +1,14 @@
-import { mssqlTable, int, nvarchar } from "drizzle-orm/mssql-core";
+import { int, nvarchar } from "drizzle-orm/mssql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
-import { boolColumn, createdAtColumn, idColumn, jsonTextColumn, updatedAtColumn } from "./_shared";
+import { boolColumn, createdAtColumn, dboSchema, idColumn, jsonTextColumn, updatedAtColumn } from "./_shared";
 
 export const documentTypeEnum = ["manual", "tutorial", "video", "faq", "link", "other"] as const;
 export type DocumentType = typeof documentTypeEnum[number];
 
-export const documentsTable = mssqlTable("SOP_documents", {
+export const documentsTable = dboSchema.table("SOP_documents", {
   id: idColumn(),
   title: nvarchar("title", { length: 500 }).notNull(),
   description: nvarchar("description", { length: "max" }),

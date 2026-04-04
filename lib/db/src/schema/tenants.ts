@@ -1,9 +1,9 @@
-import { mssqlTable, nvarchar } from "drizzle-orm/mssql-core";
+import { nvarchar } from "drizzle-orm/mssql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { boolColumn, createdAtColumn, idColumn, jsonTextColumn, updatedAtColumn } from "./_shared";
+import { boolColumn, createdAtColumn, dboSchema, idColumn, jsonTextColumn, updatedAtColumn } from "./_shared";
 
-export const tenantsTable = mssqlTable("SOP_tenants", {
+export const tenantsTable = dboSchema.table("SOP_tenants", {
   id: idColumn(),
   name: nvarchar("name", { length: 255 }).notNull(),
   slug: nvarchar("slug", { length: 100 }).notNull().unique(),

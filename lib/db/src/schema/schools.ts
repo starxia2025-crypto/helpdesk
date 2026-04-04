@@ -1,10 +1,10 @@
-import { mssqlTable, int, nvarchar } from "drizzle-orm/mssql-core";
+import { int, nvarchar } from "drizzle-orm/mssql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
-import { boolColumn, createdAtColumn, idColumn, updatedAtColumn } from "./_shared";
+import { boolColumn, createdAtColumn, dboSchema, idColumn, updatedAtColumn } from "./_shared";
 
-export const schoolsTable = mssqlTable("SOP_schools", {
+export const schoolsTable = dboSchema.table("SOP_schools", {
   id: idColumn(),
   tenantId: int("tenant_id").notNull().references(() => tenantsTable.id),
   parentSchoolId: int("parent_school_id"),

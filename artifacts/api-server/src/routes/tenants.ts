@@ -41,6 +41,11 @@ function parseQuickLinks(value: unknown) {
   return parseDbJson<Array<{ label: string; url: string; icon: string }>>(value, []);
 }
 
+function isSqlServerDuplicateError(error: any) {
+  const sqlServerNumber = error?.number ?? error?.originalError?.info?.number ?? error?.precedingErrors?.[0]?.number;
+  return error?.code === "23505" || error?.code === "2627" || error?.code === "2601" || sqlServerNumber === 2627 || sqlServerNumber === 2601;
+}
+
 router.get("/", requireAuth, requireRole("superadmin", "tecnico", "manager"), async (req, res) => {
   const page = Math.max(1, Number(req.query["page"]) || 1);
   const limit = Math.min(100, Math.max(1, Number(req.query["limit"]) || 20));
@@ -55,7 +60,11 @@ router.get("/", requireAuth, requireRole("superadmin", "tecnico", "manager"), as
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [tenants, totalResult] = await Promise.all([
-    db.select().from(tenantsTable).where(whereClause).limit(limit).offset(offset).orderBy(tenantsTable.createdAt),
+    (
+      offset > 0
+        ? db.select().from(tenantsTable).where(whereClause).orderBy(tenantsTable.createdAt).offset(offset).fetch(limit)
+        : db.select().top(limit).from(tenantsTable).where(whereClause).orderBy(tenantsTable.createdAt)
+    ),
     db.select({ count: count() }).from(tenantsTable).where(whereClause),
   ]);
 
@@ -104,31 +113,42 @@ router.post("/", requireAuth, requireRole("superadmin", "tecnico", "manager"), a
     if (parsed.data.sidebarTextColor !== undefined) insertValues["sidebarTextColor"] = parsed.data.sidebarTextColor ?? null;
     if (parsed.data.quickLinks !== undefined) insertValues["quickLinks"] = stringifyDbJson(parsed.data.quickLinks);
 
-    const tenant = await db.insert(tenantsTable).values(insertValues as any).returning();
+    await db.insert(tenantsTable).values(insertValues as any);
+
+    const tenant = await db
+      .select()
+      .top(1)
+      .from(tenantsTable)
+      .where(eq(tenantsTable.slug, parsed.data.slug));
+
+    const createdTenant = tenant[0];
+    if (!createdTenant) {
+      throw new Error("Tenant insert succeeded but could not be reloaded.");
+    }
 
     await createAuditLog({
       action: "create",
       entityType: "tenant",
-      entityId: tenant[0]!.id,
+      entityId: createdTenant.id,
       userId: authUser.userId,
       newValues: parsed.data,
     });
 
     res.status(201).json({
-      ...tenant[0],
-      quickLinks: parseQuickLinks(tenant[0]?.quickLinks),
+      ...createdTenant,
+      quickLinks: parseQuickLinks(createdTenant.quickLinks),
       totalUsers: 0,
       totalTickets: 0,
       openTickets: 0,
     });
   } catch (error: any) {
-    if (error?.code === "23505" || error?.code === "2627" || error?.code === "2601") {
-      res.status(409).json({ error: "Conflict", message: "Ya existe un cliente con ese slug." });
+    if (isSqlServerDuplicateError(error)) {
+      res.status(409).json({ error: "Conflict", message: "Ya existe un colegio con ese identificador." });
       return;
     }
 
     console.error("Create tenant failed", error);
-    res.status(500).json({ error: "InternalServerError", message: "No se pudo crear el cliente." });
+    res.status(500).json({ error: "InternalServerError", message: "No se pudo crear el colegio." });
   }
 });
 
@@ -141,7 +161,7 @@ router.get("/:tenantId", requireAuth, requireRole("superadmin", "tecnico", "admi
     return;
   }
 
-  const tenants = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const tenants = await db.select().top(1).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   const tenant = tenants[0];
   if (!tenant) {
     res.status(404).json({ error: "NotFound", message: "Tenant not found" });
@@ -180,7 +200,7 @@ router.patch("/:tenantId", requireAuth, requireRole("superadmin", "admin_cliente
     return;
   }
 
-  const tenants = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const tenants = await db.select().top(1).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   const old = tenants[0];
   if (!old) {
     res.status(404).json({ error: "NotFound", message: "Tenant not found" });
@@ -192,11 +212,17 @@ router.patch("/:tenantId", requireAuth, requireRole("superadmin", "admin_cliente
     updateValues["quickLinks"] = stringifyDbJson(parsed.data.quickLinks);
   }
 
-  const updated = await db
+  await db
     .update(tenantsTable)
     .set(updateValues as any)
-    .where(eq(tenantsTable.id, tenantId))
-    .returning();
+    .where(eq(tenantsTable.id, tenantId));
+
+  const updated = await db.select().top(1).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const updatedTenant = updated[0];
+  if (!updatedTenant) {
+    res.status(404).json({ error: "NotFound", message: "Tenant not found after update" });
+    return;
+  }
 
   await createAuditLog({
     action: "update",
@@ -217,8 +243,8 @@ router.patch("/:tenantId", requireAuth, requireRole("superadmin", "admin_cliente
   ]);
 
   res.json({
-    ...updated[0],
-    quickLinks: parseQuickLinks(updated[0]?.quickLinks),
+    ...updatedTenant,
+    quickLinks: parseQuickLinks(updatedTenant.quickLinks),
     totalUsers: Number(userCount[0]?.count ?? 0),
     totalTickets: Number(ticketCount[0]?.count ?? 0),
     openTickets: Number(openTicketCount[0]?.count ?? 0),

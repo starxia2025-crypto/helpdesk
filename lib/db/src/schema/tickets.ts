@@ -1,9 +1,9 @@
-import { mssqlTable, int, nvarchar, datetime2 } from "drizzle-orm/mssql-core";
+import { int, nvarchar, datetime2 } from "drizzle-orm/mssql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
-import { createdAtColumn, idColumn, jsonTextColumn, updatedAtColumn } from "./_shared";
+import { createdAtColumn, dboSchema, idColumn, jsonTextColumn, updatedAtColumn } from "./_shared";
 
 export const ticketStatusEnum = ["nuevo", "pendiente", "en_revision", "en_proceso", "esperando_cliente", "resuelto", "cerrado"] as const;
 export type TicketStatus = typeof ticketStatusEnum[number];
@@ -11,7 +11,7 @@ export type TicketStatus = typeof ticketStatusEnum[number];
 export const ticketPriorityEnum = ["baja", "media", "alta", "urgente"] as const;
 export type TicketPriority = typeof ticketPriorityEnum[number];
 
-export const ticketsTable = mssqlTable("SOP_tickets", {
+export const ticketsTable = dboSchema.table("SOP_tickets", {
   id: idColumn(),
   ticketNumber: nvarchar("ticket_number", { length: 50 }).notNull().unique(),
   title: nvarchar("title", { length: 500 }).notNull(),

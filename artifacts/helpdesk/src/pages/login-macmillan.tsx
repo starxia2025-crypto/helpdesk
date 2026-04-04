@@ -6,26 +6,17 @@ import { useLogin } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { LifeBuoy, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { buildApiUrl } from "@/lib/api-base-url";
 import { getDefaultRouteForRole } from "@/lib/default-route";
+import meeLogo from "@/assets/mee-logo.svg";
 
 const loginSchema = z.object({
-  email: z.string().email("Introduce un correo electrÃ³nico vÃ¡lido"),
-  password: z.string().min(6, "La contraseÃ±a debe tener al menos 6 caracteres"),
+  email: z.string().email("Introduce un correo electrónico válido"),
+  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
-
-const MicrosoftIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" className="h-4 w-4">
-    <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-    <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-    <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-    <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
-  </svg>
-);
 
 export default function MacmillanLogin() {
   const [, setLocation] = useLocation();
@@ -45,15 +36,11 @@ export default function MacmillanLogin() {
     loginMutation.mutate({ data });
   }
 
-  function handleMicrosoftLogin() {
-    window.location.href = buildApiUrl("/api/auth/microsoft");
-  }
-
   return (
-    <div className="min-h-screen w-full flex bg-slate-50 dark:bg-slate-950">
-      <div className="hidden lg:flex flex-col justify-between w-1/2 bg-primary p-12 text-primary-foreground relative overflow-hidden">
+    <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-950">
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-primary p-12 text-primary-foreground lg:flex">
         <div className="absolute inset-0 z-0 opacity-10">
-          <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+          <svg className="h-full w-full" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
                 <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" strokeWidth="1" />
@@ -63,11 +50,14 @@ export default function MacmillanLogin() {
           </svg>
         </div>
 
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="h-10 w-10 bg-white rounded-lg flex items-center justify-center">
-            <LifeBuoy className="h-6 w-6 text-primary" />
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/96 shadow-[0_18px_45px_-24px_rgba(15,23,42,0.55)] ring-1 ring-white/60">
+            <img src={meeLogo} alt="Macmillan Education Everywhere" className="h-10 w-auto object-contain" />
           </div>
-          <span className="font-bold text-2xl tracking-tight">Soporte Macmillan</span>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary-foreground/55">Macmillan Education</p>
+            <p className="mt-1 text-2xl font-bold tracking-tight">Soporte Macmillan</p>
+          </div>
         </div>
 
         <div className="relative z-10">
@@ -75,7 +65,7 @@ export default function MacmillanLogin() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="text-5xl font-bold leading-tight mb-6"
+            className="mb-6 text-5xl font-bold leading-tight"
           >
             Soporte educativo, claro y cercano.
           </motion.h1>
@@ -83,54 +73,45 @@ export default function MacmillanLogin() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="text-primary-foreground/80 text-lg max-w-md"
+            className="max-w-md text-lg text-primary-foreground/80"
           >
             Unifica incidencias, conocimiento y seguimiento para directores, jefes de estudio y profesorado en un entorno moderno y sencillo.
           </motion.p>
         </div>
 
         <div className="relative z-10 text-sm text-primary-foreground/60">
-          Â© {new Date().getFullYear()} Macmillan Iberia. Todos los derechos reservados.
+          © {new Date().getFullYear()} Macmillan Iberia. Todos los derechos reservados.
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="relative flex flex-1 items-center justify-center p-8">
+        <div className="absolute right-8 top-8 hidden items-center gap-4 rounded-2xl border border-slate-200/70 bg-white/92 px-5 py-4 shadow-[0_24px_60px_-30px_rgba(15,23,42,0.38)] backdrop-blur lg:flex">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 ring-1 ring-slate-200">
+            <img src={meeLogo} alt="Macmillan Education Everywhere" className="h-10 w-auto object-contain" />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Macmillan Education</p>
+            <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">Soporte Macmillan</p>
+          </div>
+        </div>
+
         <div className="w-full max-w-md space-y-8">
           <div className="text-center lg:text-left">
-            <div className="lg:hidden flex items-center justify-center gap-2 mb-8">
-              <div className="h-8 w-8 bg-primary rounded-md flex items-center justify-center">
-                <LifeBuoy className="h-5 w-5 text-white" />
+            <div className="mb-8 flex items-center justify-center gap-3 lg:hidden">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white ring-1 ring-slate-200 shadow-sm">
+                <img src={meeLogo} alt="Macmillan Education Everywhere" className="h-7 w-auto object-contain" />
               </div>
-              <span className="font-bold text-xl text-slate-900 dark:text-white">Soporte Macmillan</span>
+              <span className="text-xl font-bold text-slate-900 dark:text-white">Soporte Macmillan</span>
             </div>
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Bienvenido</h2>
-            <p className="text-slate-500 mt-2">Inicia sesiÃ³n para continuar</p>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full h-11 gap-3 font-medium border-slate-200 hover:bg-slate-50"
-            onClick={handleMicrosoftLogin}
-          >
-            <MicrosoftIcon />
-            Continuar con Microsoft
-          </Button>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-slate-200" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-slate-50 dark:bg-slate-950 px-3 text-slate-400">o con correo electrÃ³nico</span>
-            </div>
+            <p className="mt-2 text-slate-500">Inicia sesión para continuar</p>
           </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {loginMutation.isError && (
-                <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium">
-                  {loginMutation.error?.message || "Correo o contraseÃ±a incorrectos. IntÃ©ntalo de nuevo."}
+                <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm font-medium text-destructive">
+                  {loginMutation.error?.message || "Correo o contraseña incorrectos. Inténtalo de nuevo."}
                 </div>
               )}
 
@@ -140,7 +121,7 @@ export default function MacmillanLogin() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Correo electrÃ³nico</FormLabel>
+                      <FormLabel>Correo electrónico</FormLabel>
                       <FormControl>
                         <Input placeholder="nombre@escuela.edu" {...field} className="h-11" />
                       </FormControl>
@@ -155,11 +136,11 @@ export default function MacmillanLogin() {
                   render={({ field }) => (
                     <FormItem>
                       <div className="flex items-center justify-between">
-                        <FormLabel>ContraseÃ±a</FormLabel>
-                        <a href="#" className="text-sm font-medium text-primary hover:underline">Â¿Olvidaste tu contraseÃ±a?</a>
+                        <FormLabel>Contraseña</FormLabel>
+                        <a href="#" className="text-sm font-medium text-primary hover:underline">¿Olvidaste tu contraseña?</a>
                       </div>
                       <FormControl>
-                        <Input type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" {...field} className="h-11" />
+                        <Input type="password" placeholder="••••••••" {...field} className="h-11" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -167,14 +148,14 @@ export default function MacmillanLogin() {
                 />
               </div>
 
-              <Button type="submit" className="w-full h-11 text-base font-medium" disabled={loginMutation.isPending}>
+              <Button type="submit" className="h-11 w-full text-base font-medium" disabled={loginMutation.isPending}>
                 {loginMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Iniciando sesiÃ³n...
+                    Iniciando sesión...
                   </>
                 ) : (
-                  "Iniciar sesiÃ³n"
+                  "Iniciar sesión"
                 )}
               </Button>
             </form>
