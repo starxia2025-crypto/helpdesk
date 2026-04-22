@@ -23,6 +23,7 @@
     "nodemailer": "^6.10.1",
     "pino": "^9",
     "pino-http": "^10",
+    "mysql2": "^3.15.3",
     "zod": "catalog:"
   },
   "devDependencies": {
